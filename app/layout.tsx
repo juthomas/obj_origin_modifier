@@ -22,7 +22,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "OBJ Origin — Modifier",
   description:
-    "Déplacez l'origin et la rotation d'un fichier OBJ, puis exportez les sommets bakés.",
+    "Move and rotate an OBJ relative to the world origin, then export baked vertices.",
 };
 
 export default function RootLayout({
@@ -32,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="fr"
+      lang="en"
       className={`${display.variable} ${body.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">

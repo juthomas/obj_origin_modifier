@@ -60,13 +60,13 @@ function AxisLabels({ length }: { length: number }) {
   );
 }
 
-function LabeledAxes({ length }: { length: number }) {
+function WorldOriginGizmo({ length }: { length: number }) {
   const helperRef = useRef<THREE.AxesHelper>(null);
 
   useLayoutEffect(() => {
     const helper = helperRef.current;
     if (!helper) return;
-    helper.renderOrder = 999;
+    helper.renderOrder = 1000;
     const mat = helper.material as THREE.Material | THREE.Material[];
     const mats = Array.isArray(mat) ? mat : [mat];
     for (const m of mats) {
@@ -79,7 +79,7 @@ function LabeledAxes({ length }: { length: number }) {
   }, []);
 
   return (
-    <group>
+    <group renderOrder={1000}>
       <axesHelper ref={helperRef} args={[length]} />
       <AxisLabels length={length} />
     </group>
@@ -295,13 +295,11 @@ function SceneContent({
       <directionalLight position={[5, 8, 4]} intensity={1.1} />
       <directionalLight position={[-4, 2, -3]} intensity={0.35} />
 
-      {/* Fixed world origin with axis labels */}
-      <LabeledAxes length={axisLen} />
+      {/* Fixed world origin — always visible through the mesh */}
+      <WorldOriginGizmo length={axisLen} />
 
       <group ref={objectRef}>
         <ModelView object={object} displayMode={displayMode} />
-        {/* Axis names on the object / transform gizmo */}
-        <AxisLabels length={axisLen * 0.85} />
       </group>
 
       {target && (

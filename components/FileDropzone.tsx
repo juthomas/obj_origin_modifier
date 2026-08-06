@@ -34,7 +34,7 @@ export function FileDropzone({
           onClick={() => inputRef.current?.click()}
           className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] transition hover:border-[var(--accent)] hover:bg-[var(--surface-hover)] disabled:opacity-50"
         >
-          Charger…
+          Load…
         </button>
         <input
           ref={inputRef}
@@ -84,14 +84,14 @@ export function FileDropzone({
     >
       <div className="text-center">
         <p className="text-base font-medium text-[var(--foreground)]">
-          Déposez votre modèle OBJ
+          Drop your OBJ model
         </p>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          .obj seul, ou .obj + .mtl + textures
+          .obj alone, or .obj + .mtl + textures
         </p>
       </div>
       <span className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)]">
-        Cliquez ou glissez-déposez
+        Click or drag and drop
       </span>
       <input
         ref={inputRef}

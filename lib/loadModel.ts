@@ -16,7 +16,7 @@ function normalizePath(path: string): string {
 export async function loadModelFromFiles(files: File[]): Promise<LoadedModel> {
   const objFile = files.find((f) => f.name.toLowerCase().endsWith(".obj"));
   if (!objFile) {
-    throw new Error("Aucun fichier .obj trouvé.");
+    throw new Error("No .obj file found.");
   }
 
   const mtlFile = files.find((f) => f.name.toLowerCase().endsWith(".mtl"));

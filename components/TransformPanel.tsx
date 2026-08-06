@@ -92,10 +92,10 @@ export function TransformPanel({
     <aside className="box-border flex w-full max-w-full shrink-0 flex-col gap-5 overflow-x-hidden border-t border-[var(--border)] bg-[var(--panel)] p-4 md:w-80 md:max-w-80 md:border-t-0 md:border-l">
       <div className="min-w-0">
         <h2 className="text-sm font-medium text-[var(--foreground)]">
-          Objet
+          Object
         </h2>
         <p className="mt-1 break-words text-xs text-[var(--muted)]">
-          Déplacez et orientez le modèle. L&apos;origin monde reste fixe à
+          Move and rotate the model. The world origin stays fixed at
           (0,&nbsp;0,&nbsp;0).
         </p>
         {fileName && (
@@ -156,9 +156,9 @@ export function TransformPanel({
       </div>
 
       <p className="mt-auto min-w-0 break-words text-[11px] leading-relaxed text-[var(--muted)]">
-        À l&apos;export, la transformation est bakée dans les sommets.
+        On export, the transform is baked into the vertices.
         <span className="mt-2 block text-[var(--muted)]">
-          Ctrl/⌘+Z pour annuler · Ctrl/⌘+Shift+Z pour rétablir
+          Ctrl/⌘+Z to undo · Ctrl/⌘+Shift+Z to redo
         </span>
       </p>
     </aside>

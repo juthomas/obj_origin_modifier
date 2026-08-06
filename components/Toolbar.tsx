@@ -74,7 +74,7 @@ export function Toolbar({
 
       <div className="flex items-center gap-2">
         <span className="text-[10px] uppercase tracking-wider text-[var(--muted)]">
-          Vue
+          View
         </span>
         <Segmented
           value={displayMode}
@@ -122,7 +122,7 @@ export function Toolbar({
           disabled={exporting}
           className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[#0b0d10] transition hover:brightness-110 disabled:opacity-50"
         >
-          {exporting ? "Export…" : "Exporter"}
+          {exporting ? "Exporting…" : "Export"}
         </button>
       </div>
     </div>

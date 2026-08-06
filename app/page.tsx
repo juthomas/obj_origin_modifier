@@ -45,7 +45,7 @@ export default function Home() {
         });
         resetHistory(IDENTITY);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Échec du chargement.");
+        setError(e instanceof Error ? e.message : "Failed to load model.");
       } finally {
         setLoading(false);
       }
@@ -60,7 +60,7 @@ export default function Home() {
     try {
       await exportBakedModel(model, transform);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Échec de l'export.");
+      setError(e instanceof Error ? e.message : "Failed to export.");
     } finally {
       setExporting(false);
     }
@@ -93,15 +93,15 @@ export default function Home() {
               OBJ Origin
             </h1>
             <p className="mt-4 max-w-md text-base text-[var(--muted)]">
-              Déplacez et orientez un OBJ par rapport à l&apos;origin monde,
-              puis exportez les sommets bakés.
+              Move and rotate an OBJ relative to the world origin, then export
+              baked vertices.
             </p>
           </header>
 
           <FileDropzone onFiles={handleFiles} disabled={loading} />
 
           {loading && (
-            <p className="text-sm text-[var(--muted)]">Chargement…</p>
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
           )}
           {error && (
             <p className="text-sm text-red-400" role="alert">
