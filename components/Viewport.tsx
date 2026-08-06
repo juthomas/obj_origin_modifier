@@ -24,18 +24,33 @@ function AxisLabels({ length }: { length: number }) {
       { label: "Z", color: "#3b82f6", position: [0, 0, labelOffset] },
     ];
 
+  const makeLabelOnTop = (mesh: THREE.Mesh | null) => {
+    if (!mesh) return;
+    mesh.renderOrder = 1000;
+    mesh.raycast = () => undefined;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      if (!m) continue;
+      m.depthTest = false;
+      m.depthWrite = false;
+      m.transparent = true;
+      m.needsUpdate = true;
+    }
+  };
+
   return (
-    <group>
+    <group renderOrder={1000}>
       {axes.map(({ label, color, position }) => (
-        <Billboard key={label} position={position}>
+        <Billboard key={label} position={position} renderOrder={1000}>
           <Text
+            ref={makeLabelOnTop}
             fontSize={labelSize}
             color={color}
             anchorX="center"
             anchorY="middle"
             outlineWidth={0.045}
             outlineColor="#0b0d10"
-            depthOffset={-1}
+            renderOrder={1000}
           >
             {label}
           </Text>
@@ -46,12 +61,49 @@ function AxisLabels({ length }: { length: number }) {
 }
 
 function LabeledAxes({ length }: { length: number }) {
+  const helperRef = useRef<THREE.AxesHelper>(null);
+
+  useLayoutEffect(() => {
+    const helper = helperRef.current;
+    if (!helper) return;
+    helper.renderOrder = 999;
+    const mat = helper.material as THREE.Material | THREE.Material[];
+    const mats = Array.isArray(mat) ? mat : [mat];
+    for (const m of mats) {
+      if (!m) continue;
+      m.depthTest = false;
+      m.depthWrite = false;
+      m.transparent = true;
+      m.needsUpdate = true;
+    }
+  }, []);
+
   return (
     <group>
-      <axesHelper args={[length]} />
+      <axesHelper ref={helperRef} args={[length]} />
       <AxisLabels length={length} />
     </group>
   );
+}
+
+/** Draw transform gizmo on top of the mesh (depthTest false + high renderOrder). */
+function makeGizmoAlwaysOnTop(root: THREE.Object3D) {
+  root.renderOrder = 1000;
+  root.traverse((obj) => {
+    obj.renderOrder = 1000;
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.material) return;
+    const mats = Array.isArray(mesh.material)
+      ? mesh.material
+      : [mesh.material];
+    for (const m of mats) {
+      if (!m) continue;
+      m.depthTest = false;
+      m.depthWrite = false;
+      if ("transparent" in m) m.transparent = true;
+      m.needsUpdate = true;
+    }
+  });
 }
 
 type ViewportProps = {
@@ -191,6 +243,7 @@ function SceneContent({
   displayMode,
 }: ViewportProps) {
   const objectRef = useRef<THREE.Group>(null);
+  const controlsRef = useRef<THREE.Object3D>(null);
   const [target, setTarget] = useState<THREE.Object3D | null>(null);
   const dragging = useRef(false);
   const [orbitEnabled, setOrbitEnabled] = useState(true);
@@ -198,6 +251,12 @@ function SceneContent({
   useEffect(() => {
     setTarget(objectRef.current);
   }, []);
+
+  useLayoutEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    makeGizmoAlwaysOnTop(controls);
+  }, [target, gizmoMode]);
 
   useEffect(() => {
     const g = objectRef.current;
@@ -241,6 +300,7 @@ function SceneContent({
 
       {target && (
         <TransformControls
+          ref={controlsRef as never}
           object={target}
           mode={gizmoMode}
           size={0.9}
@@ -290,7 +350,7 @@ function SceneContent({
 
 export function Viewport(props: ViewportProps) {
   return (
-    <div className="relative h-full min-h-[320px] w-full flex-1 bg-[#0b0d10]">
+    <div className="relative h-full min-h-[320px] min-w-0 flex-1 overflow-hidden bg-[#0b0d10]">
       <Canvas
         camera={{ position: [3, 2, 3], fov: 45, near: 0.01, far: 5000 }}
         gl={{ antialias: true }}
