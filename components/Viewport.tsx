@@ -201,34 +201,40 @@ function ModelView({
 function FitCamera({ object }: { object: THREE.Group }) {
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls);
+  const cameraRef = useRef(camera);
+  const fittedFor = useRef<THREE.Group | null>(null);
+
+  useLayoutEffect(() => {
+    cameraRef.current = camera;
+  }, [camera]);
 
   useEffect(() => {
+    // Frame once per loaded object; orbit pivot stays on the world-origin gizmo
+    if (fittedFor.current === object) return;
+    fittedFor.current = object;
+
+    const cam = cameraRef.current;
     const box = new THREE.Box3().setFromObject(object);
     const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z, 0.001);
     const dist = maxDim * 2.2;
 
-    camera.position.set(
-      center.x + dist * 0.7,
-      center.y + dist * 0.55,
-      center.z + dist * 0.7,
-    );
-    if (camera instanceof THREE.PerspectiveCamera) {
-      // eslint-disable-next-line react-hooks/immutability -- three.js camera
-      camera.near = Math.max(dist / 200, 0.01);
-      camera.far = dist * 50;
-      camera.updateProjectionMatrix();
+    // Orbit around fixed world origin (0,0,0)
+    cam.position.set(dist * 0.7, dist * 0.55, dist * 0.7);
+    if (cam instanceof THREE.PerspectiveCamera) {
+      cam.near = Math.max(dist / 200, 0.01);
+      cam.far = dist * 50;
+      cam.updateProjectionMatrix();
     }
-    camera.lookAt(center);
+    cam.lookAt(0, 0, 0);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orbit = controls as any;
     if (orbit?.target) {
-      orbit.target.copy(center);
+      orbit.target.set(0, 0, 0);
       orbit.update?.();
     }
-  }, [object, camera, controls]);
+  }, [object, controls]);
 
   return null;
 }
@@ -336,6 +342,7 @@ function SceneContent({
         enabled={orbitEnabled}
         enableDamping
         dampingFactor={0.08}
+        target={[0, 0, 0]}
       />
 
       <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
