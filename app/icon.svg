@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect width="32" height="32" rx="7" fill="#0b0d10"/>
+  <rect x="1" y="1" width="30" height="30" rx="6" stroke="#2a3340" stroke-width="1"/>
+  <!-- Origin cube (wire) -->
+  <path d="M11 14.5 L16 12 L21 14.5 L21 19.5 L16 22 L11 19.5 Z" stroke="#7dd3c0" stroke-width="1.2" stroke-linejoin="round" opacity="0.9"/>
+  <path d="M16 12 L16 17 M11 14.5 L16 17 L21 14.5" stroke="#7dd3c0" stroke-width="1" opacity="0.55"/>
+  <!-- Axes from origin -->
+  <g stroke-linecap="round" stroke-width="2">
+    <path d="M16 17 L25 20" stroke="#ef4444"/>
+    <path d="M16 17 L16 6" stroke="#22c55e"/>
+    <path d="M16 17 L7 20" stroke="#3b82f6"/>
+  </g>
+  <circle cx="16" cy="17" r="1.6" fill="#e8eef4"/>
+</svg>
