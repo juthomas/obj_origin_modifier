@@ -11,10 +11,11 @@ Outil web pour repositionner l’**origin** et la **rotation d’origine** d’u
 ## Fonctionnalités
 
 - Chargement `.obj` seul, ou `.obj` + `.mtl` + textures
-- Gizmo translate / rotate pour placer le pivot (le mesh reste fixe)
+- Gizmo translate / rotate sur **l’objet** (l’origin monde reste fixe à 0)
 - Champs numériques position + rotation
+- Undo / Redo (`Ctrl/⌘+Z`, `Ctrl/⌘+Shift+Z`)
 - Vues Solid / Wireframe / Both
-- Export baké : `v' = R⁻¹ · (v − O)` — OBJ seul, ou ZIP (OBJ + MTL + textures)
+- Export baké : `v' = R · v + T` — OBJ seul, ou ZIP (OBJ + MTL + textures)
 
 ## Développement
 
@@ -41,6 +42,6 @@ npx vercel
 ## Usage
 
 1. Déposez un `.obj` (et optionnellement `.mtl` + images)
-2. Placez le pivot avec le gizmo ou le panneau numérique
+2. Déplacez / orientez l’objet avec le gizmo ou le panneau numérique
 3. Choisissez Solid / Wireframe / Both
-4. Cliquez **Exporter**
+4. Cliquez **Exporter** (Ctrl/⌘+Z pour annuler)

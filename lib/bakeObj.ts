@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import JSZip from "jszip";
-import type { LoadedModel, PivotState } from "./types";
+import type { LoadedModel, ObjectTransform } from "./types";
 
 /** Format with consistent precision for OBJ export */
 function fmt(n: number): string {
@@ -14,17 +14,18 @@ function fmt(n: number): string {
 }
 
 /**
- * Bake: v' = R⁻¹ · (v − O)
- * Normals: n' = normalize(R⁻¹ · n)
+ * Bake object transform into vertices (origin stays at world 0).
+ * v' = R · v + T
+ * Normals: n' = normalize(R · n)
  */
 export function bakeObjText(
   objText: string,
-  pivot: PivotState,
+  transform: ObjectTransform,
   options?: { mtlFileName?: string | null },
 ): string {
-  const origin = new THREE.Vector3(...pivot.position);
-  const rotation = new THREE.Euler(...pivot.rotation, "XYZ");
-  const invQuat = new THREE.Quaternion().setFromEuler(rotation).invert();
+  const translation = new THREE.Vector3(...transform.position);
+  const rotation = new THREE.Euler(...transform.rotation, "XYZ");
+  const quat = new THREE.Quaternion().setFromEuler(rotation);
 
   const tmp = new THREE.Vector3();
   const lines = objText.split(/\r?\n/);
@@ -46,7 +47,7 @@ export function bakeObjText(
         parseFloat(parts[2]),
         parseFloat(parts[3]),
       );
-      tmp.sub(origin).applyQuaternion(invQuat);
+      tmp.applyQuaternion(quat).add(translation);
       const w = parts.length > 4 ? ` ${parts.slice(4).join(" ")}` : "";
       out.push(`v ${fmt(tmp.x)} ${fmt(tmp.y)} ${fmt(tmp.z)}${w}`);
       continue;
@@ -58,7 +59,7 @@ export function bakeObjText(
         parseFloat(parts[2]),
         parseFloat(parts[3]),
       );
-      tmp.applyQuaternion(invQuat).normalize();
+      tmp.applyQuaternion(quat).normalize();
       out.push(`vn ${fmt(tmp.x)} ${fmt(tmp.y)} ${fmt(tmp.z)}`);
       continue;
     }
@@ -85,10 +86,10 @@ function triggerDownload(blob: Blob, filename: string) {
 
 export async function exportBakedModel(
   model: LoadedModel,
-  pivot: PivotState,
+  transform: ObjectTransform,
 ): Promise<void> {
   const mtlName = model.mtlFileName;
-  const bakedObj = bakeObjText(model.objText, pivot, {
+  const bakedObj = bakeObjText(model.objText, transform, {
     mtlFileName: mtlName,
   });
 

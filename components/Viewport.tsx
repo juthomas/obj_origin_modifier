@@ -8,14 +8,58 @@ import {
   Grid,
   GizmoHelper,
   GizmoViewport,
+  Billboard,
+  Text,
 } from "@react-three/drei";
 import * as THREE from "three";
-import type { DisplayMode, GizmoMode, PivotState } from "@/lib/types";
+import type { DisplayMode, GizmoMode, ObjectTransform } from "@/lib/types";
+
+function AxisLabels({ length }: { length: number }) {
+  const labelSize = Math.max(length * 0.22, 0.18);
+  const labelOffset = length * 1.12;
+  const axes: { label: string; color: string; position: [number, number, number] }[] =
+    [
+      { label: "X", color: "#ef4444", position: [labelOffset, 0, 0] },
+      { label: "Y", color: "#22c55e", position: [0, labelOffset, 0] },
+      { label: "Z", color: "#3b82f6", position: [0, 0, labelOffset] },
+    ];
+
+  return (
+    <group>
+      {axes.map(({ label, color, position }) => (
+        <Billboard key={label} position={position}>
+          <Text
+            fontSize={labelSize}
+            color={color}
+            anchorX="center"
+            anchorY="middle"
+            outlineWidth={0.045}
+            outlineColor="#0b0d10"
+            depthOffset={-1}
+          >
+            {label}
+          </Text>
+        </Billboard>
+      ))}
+    </group>
+  );
+}
+
+function LabeledAxes({ length }: { length: number }) {
+  return (
+    <group>
+      <axesHelper args={[length]} />
+      <AxisLabels length={length} />
+    </group>
+  );
+}
 
 type ViewportProps = {
   object: THREE.Group;
-  pivot: PivotState;
-  onPivotChange: (pivot: PivotState) => void;
+  transform: ObjectTransform;
+  onTransformChange: (transform: ObjectTransform) => void;
+  onGestureStart: () => void;
+  onGestureEnd: () => void;
   gizmoMode: GizmoMode;
   displayMode: DisplayMode;
 };
@@ -69,11 +113,12 @@ function ModelView({
     const items: { geometry: THREE.BufferGeometry; matrix: THREE.Matrix4 }[] =
       [];
     object.updateMatrixWorld(true);
+    const invRoot = object.matrixWorld.clone().invert();
     object.traverse((child) => {
       if (child instanceof THREE.Mesh && child.geometry) {
         items.push({
           geometry: new THREE.EdgesGeometry(child.geometry, 20),
-          matrix: child.matrixWorld.clone(),
+          matrix: invRoot.clone().multiply(child.matrixWorld),
         });
       }
     });
@@ -112,7 +157,6 @@ function FitCamera({ object }: { object: THREE.Group }) {
     const maxDim = Math.max(size.x, size.y, size.z, 0.001);
     const dist = maxDim * 2.2;
 
-    // Three.js cameras are mutable by design
     camera.position.set(
       center.x + dist * 0.7,
       center.y + dist * 0.55,
@@ -139,26 +183,28 @@ function FitCamera({ object }: { object: THREE.Group }) {
 
 function SceneContent({
   object,
-  pivot,
-  onPivotChange,
+  transform,
+  onTransformChange,
+  onGestureStart,
+  onGestureEnd,
   gizmoMode,
   displayMode,
 }: ViewportProps) {
-  const pivotRef = useRef<THREE.Group>(null);
+  const objectRef = useRef<THREE.Group>(null);
   const [target, setTarget] = useState<THREE.Object3D | null>(null);
   const dragging = useRef(false);
   const [orbitEnabled, setOrbitEnabled] = useState(true);
 
   useEffect(() => {
-    setTarget(pivotRef.current);
+    setTarget(objectRef.current);
   }, []);
 
   useEffect(() => {
-    const g = pivotRef.current;
+    const g = objectRef.current;
     if (!g || dragging.current) return;
-    g.position.set(...pivot.position);
-    g.rotation.set(...pivot.rotation);
-  }, [pivot]);
+    g.position.set(...transform.position);
+    g.rotation.set(...transform.rotation);
+  }, [transform]);
 
   const gridSize = useMemo(() => {
     const box = new THREE.Box3().setFromObject(object);
@@ -166,12 +212,12 @@ function SceneContent({
     return Math.max(size.x, size.z, 2) * 2;
   }, [object]);
 
-  const axisLen = Math.max(gridSize * 0.12, 0.4);
+  const axisLen = Math.max(gridSize * 0.15, 0.5);
 
-  const syncPivot = () => {
-    const g = pivotRef.current;
+  const syncTransform = () => {
+    const g = objectRef.current;
     if (!g) return;
-    onPivotChange({
+    onTransformChange({
       position: [g.position.x, g.position.y, g.position.z],
       rotation: [g.rotation.x, g.rotation.y, g.rotation.z],
     });
@@ -184,10 +230,13 @@ function SceneContent({
       <directionalLight position={[5, 8, 4]} intensity={1.1} />
       <directionalLight position={[-4, 2, -3]} intensity={0.35} />
 
-      <ModelView object={object} displayMode={displayMode} />
+      {/* Fixed world origin with axis labels */}
+      <LabeledAxes length={axisLen} />
 
-      <group ref={pivotRef}>
-        <axesHelper args={[axisLen]} />
+      <group ref={objectRef}>
+        <ModelView object={object} displayMode={displayMode} />
+        {/* Axis names on the object / transform gizmo */}
+        <AxisLabels length={axisLen * 0.85} />
       </group>
 
       {target && (
@@ -198,13 +247,15 @@ function SceneContent({
           onMouseDown={() => {
             dragging.current = true;
             setOrbitEnabled(false);
+            onGestureStart();
           }}
           onMouseUp={() => {
             dragging.current = false;
             setOrbitEnabled(true);
-            syncPivot();
+            syncTransform();
+            onGestureEnd();
           }}
-          onObjectChange={syncPivot}
+          onObjectChange={syncTransform}
         />
       )}
 

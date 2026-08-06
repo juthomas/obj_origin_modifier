@@ -7,56 +7,64 @@ import { TransformPanel } from "@/components/TransformPanel";
 import { Viewport } from "@/components/Viewport";
 import { exportBakedModel } from "@/lib/bakeObj";
 import { disposeModel, loadModelFromFiles } from "@/lib/loadModel";
-import type {
-  DisplayMode,
-  GizmoMode,
-  LoadedModel,
-  PivotState,
-} from "@/lib/types";
+import { useTransformHistory } from "@/lib/useTransformHistory";
+import type { DisplayMode, GizmoMode, LoadedModel } from "@/lib/types";
 
-const ZERO_PIVOT: PivotState = {
-  position: [0, 0, 0],
-  rotation: [0, 0, 0],
+const IDENTITY = {
+  position: [0, 0, 0] as [number, number, number],
+  rotation: [0, 0, 0] as [number, number, number],
 };
 
 export default function Home() {
   const [model, setModel] = useState<LoadedModel | null>(null);
-  const [pivot, setPivot] = useState<PivotState>(ZERO_PIVOT);
+  const {
+    transform,
+    setTransform,
+    commitTransform,
+    beginGesture,
+    endGesture,
+    undo,
+    redo,
+    resetHistory,
+  } = useTransformHistory(IDENTITY);
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>("translate");
   const [displayMode, setDisplayMode] = useState<DisplayMode>("solid");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFiles = useCallback(async (files: File[]) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const loaded = await loadModelFromFiles(files);
-      setModel((prev) => {
-        disposeModel(prev);
-        return loaded;
-      });
-      setPivot(ZERO_PIVOT);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Échec du chargement.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const handleFiles = useCallback(
+    async (files: File[]) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const loaded = await loadModelFromFiles(files);
+        setModel((prev) => {
+          disposeModel(prev);
+          return loaded;
+        });
+        resetHistory(IDENTITY);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Échec du chargement.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [resetHistory],
+  );
 
   const handleExport = useCallback(async () => {
     if (!model) return;
     setExporting(true);
     setError(null);
     try {
-      await exportBakedModel(model, pivot);
+      await exportBakedModel(model, transform);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Échec de l'export.");
     } finally {
       setExporting(false);
     }
-  }, [model, pivot]);
+  }, [model, transform]);
 
   if (!model) {
     return (
@@ -85,8 +93,8 @@ export default function Home() {
               OBJ Origin
             </h1>
             <p className="mt-4 max-w-md text-base text-[var(--muted)]">
-              Déplacez l&apos;origin et la rotation d&apos;un fichier OBJ, puis
-              exportez les sommets bakés.
+              Déplacez et orientez un OBJ par rapport à l&apos;origin monde,
+              puis exportez les sommets bakés.
             </p>
           </header>
 
@@ -119,7 +127,9 @@ export default function Home() {
         displayMode={displayMode}
         onGizmoMode={setGizmoMode}
         onDisplayMode={setDisplayMode}
-        onResetPivot={() => setPivot(ZERO_PIVOT)}
+        onReset={() => commitTransform(IDENTITY)}
+        onUndo={undo}
+        onRedo={redo}
         onExport={handleExport}
         exporting={exporting}
         fileSlot={
@@ -137,14 +147,16 @@ export default function Home() {
         <Viewport
           key={model.objFileName + model.objText.length}
           object={model.object}
-          pivot={pivot}
-          onPivotChange={setPivot}
+          transform={transform}
+          onTransformChange={setTransform}
+          onGestureStart={beginGesture}
+          onGestureEnd={endGesture}
           gizmoMode={gizmoMode}
           displayMode={displayMode}
         />
         <TransformPanel
-          pivot={pivot}
-          onChange={setPivot}
+          transform={transform}
+          onChange={commitTransform}
           fileName={model.objFileName}
           hasMtl={Boolean(model.mtlText)}
         />

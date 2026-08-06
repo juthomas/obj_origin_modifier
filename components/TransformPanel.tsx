@@ -1,10 +1,10 @@
 "use client";
 
-import type { PivotState } from "@/lib/types";
+import type { ObjectTransform } from "@/lib/types";
 
 type TransformPanelProps = {
-  pivot: PivotState;
-  onChange: (pivot: PivotState) => void;
+  transform: ObjectTransform;
+  onChange: (transform: ObjectTransform) => void;
   fileName?: string;
   hasMtl?: boolean;
 };
@@ -48,32 +48,38 @@ function NumberField({
 }
 
 export function TransformPanel({
-  pivot,
+  transform,
   onChange,
   fileName,
   hasMtl,
 }: TransformPanelProps) {
   const setPos = (i: number, v: number) => {
-    const position = [...pivot.position] as [number, number, number];
+    const position = [...transform.position] as [number, number, number];
     position[i] = v;
-    onChange({ ...pivot, position });
+    onChange({ ...transform, position });
   };
 
   const setRotDeg = (i: number, degrees: number) => {
-    const rotation = [...pivot.rotation] as [number, number, number];
+    const rotation = [...transform.rotation] as [number, number, number];
     rotation[i] = rad(degrees);
-    onChange({ ...pivot, rotation });
+    onChange({ ...transform, rotation });
   };
 
   return (
     <aside className="flex w-full flex-col gap-5 border-l border-[var(--border)] bg-[var(--panel)] p-4 md:w-64 md:shrink-0">
       <div>
-        <h2 className="text-sm font-medium text-[var(--foreground)]">Pivot</h2>
+        <h2 className="text-sm font-medium text-[var(--foreground)]">
+          Objet
+        </h2>
         <p className="mt-1 text-xs text-[var(--muted)]">
-          Placez l&apos;origin et la rotation d&apos;origine. Le mesh reste fixe.
+          Déplacez et orientez le modèle. L&apos;origin monde reste fixe à
+          (0,&nbsp;0,&nbsp;0).
         </p>
         {fileName && (
-          <p className="mt-2 truncate text-xs text-[var(--muted)]" title={fileName}>
+          <p
+            className="mt-2 truncate text-xs text-[var(--muted)]"
+            title={fileName}
+          >
             {fileName}
             {hasMtl ? " + MTL" : ""}
           </p>
@@ -87,17 +93,17 @@ export function TransformPanel({
         <div className="grid grid-cols-3 gap-2">
           <NumberField
             label="X"
-            value={pivot.position[0]}
+            value={transform.position[0]}
             onChange={(v) => setPos(0, v)}
           />
           <NumberField
             label="Y"
-            value={pivot.position[1]}
+            value={transform.position[1]}
             onChange={(v) => setPos(1, v)}
           />
           <NumberField
             label="Z"
-            value={pivot.position[2]}
+            value={transform.position[2]}
             onChange={(v) => setPos(2, v)}
           />
         </div>
@@ -110,19 +116,19 @@ export function TransformPanel({
         <div className="grid grid-cols-3 gap-2">
           <NumberField
             label="X"
-            value={deg(pivot.rotation[0])}
+            value={deg(transform.rotation[0])}
             onChange={(v) => setRotDeg(0, v)}
             step={1}
           />
           <NumberField
             label="Y"
-            value={deg(pivot.rotation[1])}
+            value={deg(transform.rotation[1])}
             onChange={(v) => setRotDeg(1, v)}
             step={1}
           />
           <NumberField
             label="Z"
-            value={deg(pivot.rotation[2])}
+            value={deg(transform.rotation[2])}
             onChange={(v) => setRotDeg(2, v)}
             step={1}
           />
@@ -130,8 +136,10 @@ export function TransformPanel({
       </div>
 
       <p className="mt-auto text-[11px] leading-relaxed text-[var(--muted)]">
-        À l&apos;export, les sommets sont bakés pour que ce pivot devienne
-        (0,&nbsp;0,&nbsp;0) avec les axes alignés.
+        À l&apos;export, la transformation est bakée dans les sommets.
+        <span className="mt-2 block text-[var(--muted)]">
+          Ctrl/⌘+Z pour annuler · Ctrl/⌘+Shift+Z pour rétablir
+        </span>
       </p>
     </aside>
   );

@@ -7,7 +7,9 @@ type ToolbarProps = {
   displayMode: DisplayMode;
   onGizmoMode: (mode: GizmoMode) => void;
   onDisplayMode: (mode: DisplayMode) => void;
-  onResetPivot: () => void;
+  onReset: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
   onExport: () => void;
   exporting?: boolean;
   fileSlot?: React.ReactNode;
@@ -47,7 +49,9 @@ export function Toolbar({
   displayMode,
   onGizmoMode,
   onDisplayMode,
-  onResetPivot,
+  onReset,
+  onUndo,
+  onRedo,
   onExport,
   exporting,
   fileSlot,
@@ -85,12 +89,32 @@ export function Toolbar({
 
       <div className="ml-auto flex items-center gap-2">
         {fileSlot}
+        {onUndo && (
+          <button
+            type="button"
+            onClick={onUndo}
+            title="Ctrl/⌘+Z"
+            className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-hover)]"
+          >
+            Undo
+          </button>
+        )}
+        {onRedo && (
+          <button
+            type="button"
+            onClick={onRedo}
+            title="Ctrl/⌘+Shift+Z"
+            className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-hover)]"
+          >
+            Redo
+          </button>
+        )}
         <button
           type="button"
-          onClick={onResetPivot}
+          onClick={onReset}
           className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-hover)]"
         >
-          Reset pivot
+          Reset
         </button>
         <button
           type="button"
