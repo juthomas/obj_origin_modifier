@@ -12,7 +12,8 @@ type ToolbarProps = {
   onRedo?: () => void;
   onExport: () => void;
   exporting?: boolean;
-  fileSlot?: React.ReactNode;
+  loadSlot?: React.ReactNode;
+  addSlot?: React.ReactNode;
 };
 
 function Segmented<T extends string>({
@@ -54,7 +55,8 @@ export function Toolbar({
   onRedo,
   onExport,
   exporting,
-  fileSlot,
+  loadSlot,
+  addSlot,
 }: ToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] bg-[var(--panel)] px-4 py-2.5">
@@ -68,6 +70,7 @@ export function Toolbar({
           options={[
             { id: "translate", label: "Translate" },
             { id: "rotate", label: "Rotate" },
+            { id: "scale", label: "Scale" },
           ]}
         />
       </div>
@@ -87,8 +90,9 @@ export function Toolbar({
         />
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
-        {fileSlot}
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        {loadSlot}
+        {addSlot}
         {onUndo && (
           <button
             type="button"

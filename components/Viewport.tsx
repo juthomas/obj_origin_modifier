@@ -12,7 +12,17 @@ import {
   Text,
 } from "@react-three/drei";
 import * as THREE from "three";
-import type { DisplayMode, GizmoMode, ObjectTransform } from "@/lib/types";
+import type {
+  DisplayMode,
+  GizmoMode,
+  ObjectTransform,
+} from "@/lib/types";
+
+export type ViewportItem = {
+  id: string;
+  object: THREE.Group;
+  transform: ObjectTransform;
+};
 
 function AxisLabels({ length }: { length: number }) {
   const labelSize = Math.max(length * 0.22, 0.18);
@@ -86,7 +96,6 @@ function WorldOriginGizmo({ length }: { length: number }) {
   );
 }
 
-/** Draw transform gizmo on top of the mesh (depthTest false + high renderOrder). */
 function makeGizmoAlwaysOnTop(root: THREE.Object3D) {
   root.renderOrder = 1000;
   root.traverse((obj) => {
@@ -107,9 +116,9 @@ function makeGizmoAlwaysOnTop(root: THREE.Object3D) {
 }
 
 type ViewportProps = {
-  object: THREE.Group;
-  transform: ObjectTransform;
-  onTransformChange: (transform: ObjectTransform) => void;
+  items: ViewportItem[];
+  selectedId: string | null;
+  onTransformChange: (id: string, transform: ObjectTransform) => void;
   onGestureStart: () => void;
   onGestureEnd: () => void;
   gizmoMode: GizmoMode;
@@ -198,28 +207,76 @@ function ModelView({
   );
 }
 
-function FitCamera({ object }: { object: THREE.Group }) {
+function SceneObjectGroup({
+  item,
+  displayMode,
+  groupRef,
+}: {
+  item: ViewportItem;
+  displayMode: DisplayMode;
+  groupRef?: (node: THREE.Group | null) => void;
+}) {
+  const localRef = useRef<THREE.Group>(null);
+  const dragging = useRef(false);
+
+  useEffect(() => {
+    const g = localRef.current;
+    if (!g || dragging.current) return;
+    g.position.set(...item.transform.position);
+    g.rotation.set(...item.transform.rotation);
+    g.scale.set(...item.transform.scale);
+  }, [item.transform]);
+
+  return (
+    <group
+      ref={(node) => {
+        localRef.current = node;
+        groupRef?.(node);
+      }}
+    >
+      <ModelView object={item.object} displayMode={displayMode} />
+    </group>
+  );
+}
+
+function FitCamera({ objects }: { objects: THREE.Object3D[] }) {
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls);
   const cameraRef = useRef(camera);
-  const fittedFor = useRef<THREE.Group | null>(null);
+  const objectsRef = useRef(objects);
+  const prevIdsRef = useRef<string[]>([]);
 
   useLayoutEffect(() => {
     cameraRef.current = camera;
   }, [camera]);
 
+  useLayoutEffect(() => {
+    objectsRef.current = objects;
+  }, [objects]);
+
+  const ids = objects.map((o) => o.uuid);
+  const idKey = ids.join("|");
+
   useEffect(() => {
-    // Frame once per loaded object; orbit pivot stays on the world-origin gizmo
-    if (fittedFor.current === object) return;
-    fittedFor.current = object;
+    const currentObjects = objectsRef.current;
+    if (currentObjects.length === 0) return;
+    const currentIds = currentObjects.map((o) => o.uuid);
+    const prev = prevIdsRef.current;
+    const isFirst = prev.length === 0;
+    const isReplace =
+      prev.length > 0 && currentIds.every((id) => !prev.includes(id));
+    prevIdsRef.current = currentIds;
+    if (!isFirst && !isReplace) return;
 
     const cam = cameraRef.current;
-    const box = new THREE.Box3().setFromObject(object);
+    const box = new THREE.Box3();
+    for (const obj of currentObjects) {
+      box.expandByObject(obj);
+    }
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z, 0.001);
     const dist = maxDim * 2.2;
 
-    // Orbit around fixed world origin (0,0,0)
     cam.position.set(dist * 0.7, dist * 0.55, dist * 0.7);
     if (cam instanceof THREE.PerspectiveCamera) {
       cam.near = Math.max(dist / 200, 0.01);
@@ -234,29 +291,29 @@ function FitCamera({ object }: { object: THREE.Group }) {
       orbit.target.set(0, 0, 0);
       orbit.update?.();
     }
-  }, [object, controls]);
+  }, [idKey, controls]);
 
   return null;
 }
 
 function SceneContent({
-  object,
-  transform,
+  items,
+  selectedId,
   onTransformChange,
   onGestureStart,
   onGestureEnd,
   gizmoMode,
   displayMode,
 }: ViewportProps) {
-  const objectRef = useRef<THREE.Group>(null);
-  const controlsRef = useRef<THREE.Object3D>(null);
+  const selectedRef = useRef<THREE.Group | null>(null);
   const [target, setTarget] = useState<THREE.Object3D | null>(null);
+  const controlsRef = useRef<THREE.Object3D>(null);
   const dragging = useRef(false);
   const [orbitEnabled, setOrbitEnabled] = useState(true);
 
-  useEffect(() => {
-    setTarget(objectRef.current);
-  }, []);
+  useLayoutEffect(() => {
+    setTarget(selectedRef.current);
+  }, [selectedId, items]);
 
   useLayoutEffect(() => {
     const controls = controlsRef.current;
@@ -264,27 +321,24 @@ function SceneContent({
     makeGizmoAlwaysOnTop(controls);
   }, [target, gizmoMode]);
 
-  useEffect(() => {
-    const g = objectRef.current;
-    if (!g || dragging.current) return;
-    g.position.set(...transform.position);
-    g.rotation.set(...transform.rotation);
-  }, [transform]);
-
   const gridSize = useMemo(() => {
-    const box = new THREE.Box3().setFromObject(object);
+    const box = new THREE.Box3();
+    for (const item of items) {
+      box.expandByObject(item.object);
+    }
     const size = box.getSize(new THREE.Vector3());
     return Math.max(size.x, size.z, 2) * 2;
-  }, [object]);
+  }, [items]);
 
   const axisLen = Math.max(gridSize * 0.15, 0.5);
 
   const syncTransform = () => {
-    const g = objectRef.current;
-    if (!g) return;
-    onTransformChange({
+    const g = selectedRef.current;
+    if (!g || !selectedId) return;
+    onTransformChange(selectedId, {
       position: [g.position.x, g.position.y, g.position.z],
       rotation: [g.rotation.x, g.rotation.y, g.rotation.z],
+      scale: [g.scale.x, g.scale.y, g.scale.z],
     });
   };
 
@@ -295,15 +349,26 @@ function SceneContent({
       <directionalLight position={[5, 8, 4]} intensity={1.1} />
       <directionalLight position={[-4, 2, -3]} intensity={0.35} />
 
-      {/* Fixed world origin — always visible through the mesh */}
       <WorldOriginGizmo length={axisLen} />
 
-      <group ref={objectRef}>
-        <ModelView object={object} displayMode={displayMode} />
-      </group>
+      {items.map((item) => (
+        <SceneObjectGroup
+          key={item.id}
+          item={item}
+          displayMode={displayMode}
+          groupRef={
+            item.id === selectedId
+              ? (node) => {
+                  selectedRef.current = node;
+                }
+              : undefined
+          }
+        />
+      ))}
 
-      {target && (
+      {target && selectedId && (
         <TransformControls
+          key={selectedId}
           ref={controlsRef as never}
           object={target}
           mode={gizmoMode}
@@ -333,7 +398,7 @@ function SceneContent({
         infiniteGrid
       />
 
-      <FitCamera object={object} />
+      <FitCamera objects={items.map((i) => i.object)} />
 
       <OrbitControls
         makeDefault

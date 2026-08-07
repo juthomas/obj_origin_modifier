@@ -1,72 +1,182 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FileDropzone } from "@/components/FileDropzone";
 import { Toolbar } from "@/components/Toolbar";
 import { TransformPanel } from "@/components/TransformPanel";
 import { Viewport } from "@/components/Viewport";
-import { exportBakedModel } from "@/lib/bakeObj";
+import { mergeAndExport } from "@/lib/bakeObj";
 import { disposeModel, loadModelFromFiles } from "@/lib/loadModel";
-import { useTransformHistory } from "@/lib/useTransformHistory";
-import type { DisplayMode, GizmoMode, LoadedModel } from "@/lib/types";
+import { useSceneHistory } from "@/lib/useSceneHistory";
+import {
+  IDENTITY_TRANSFORM,
+  cloneTransform,
+  type DisplayMode,
+  type GizmoMode,
+  type SceneObject,
+} from "@/lib/types";
 
-const IDENTITY = {
-  position: [0, 0, 0] as [number, number, number],
-  rotation: [0, 0, 0] as [number, number, number],
-};
+function newId() {
+  return `obj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export default function Home() {
-  const [model, setModel] = useState<LoadedModel | null>(null);
+  const [objects, setObjects] = useState<SceneObject[]>([]);
   const {
-    transform,
-    setTransform,
-    commitTransform,
+    snapshot,
+    setSnapshot,
+    commitSnapshot,
     beginGesture,
     endGesture,
     undo,
     redo,
     resetHistory,
-  } = useTransformHistory(IDENTITY);
+  } = useSceneHistory({ transforms: {}, selectedId: null });
+
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>("translate");
   const [displayMode, setDisplayMode] = useState<DisplayMode>("solid");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFiles = useCallback(
+  // Merge history transforms onto objects for rendering
+  const sceneObjects = useMemo(() => {
+    return objects.map((obj) => ({
+      ...obj,
+      transform:
+        snapshot.transforms[obj.id] ??
+        obj.transform ??
+        cloneTransform(IDENTITY_TRANSFORM),
+    }));
+  }, [objects, snapshot.transforms]);
+
+  const selectedId = snapshot.selectedId;
+  const selected = sceneObjects.find((o) => o.id === selectedId) ?? null;
+
+  const replaceScene = useCallback(
+    (loaded: Awaited<ReturnType<typeof loadModelFromFiles>>) => {
+      const id = newId();
+      const transform = cloneTransform(IDENTITY_TRANSFORM);
+      setObjects((prev) => {
+        for (const o of prev) disposeModel(o.model);
+        return [{ id, model: loaded, transform }];
+      });
+      resetHistory({
+        transforms: { [id]: cloneTransform(IDENTITY_TRANSFORM) },
+        selectedId: id,
+      });
+    },
+    [resetHistory],
+  );
+
+  const addToScene = useCallback(
+    (loaded: Awaited<ReturnType<typeof loadModelFromFiles>>) => {
+      const id = newId();
+      const transform = cloneTransform(IDENTITY_TRANSFORM);
+      setObjects((prev) => [...prev, { id, model: loaded, transform }]);
+      commitSnapshot({
+        transforms: {
+          ...snapshot.transforms,
+          [id]: transform,
+        },
+        selectedId: id,
+      });
+    },
+    [commitSnapshot, snapshot.transforms],
+  );
+
+  const handleLoad = useCallback(
     async (files: File[]) => {
       setLoading(true);
       setError(null);
       try {
         const loaded = await loadModelFromFiles(files);
-        setModel((prev) => {
-          disposeModel(prev);
-          return loaded;
-        });
-        resetHistory(IDENTITY);
+        replaceScene(loaded);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load model.");
       } finally {
         setLoading(false);
       }
     },
-    [resetHistory],
+    [replaceScene],
+  );
+
+  const handleAdd = useCallback(
+    async (files: File[]) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const loaded = await loadModelFromFiles(files);
+        addToScene(loaded);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to add model.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [addToScene],
   );
 
   const handleExport = useCallback(async () => {
-    if (!model) return;
+    if (sceneObjects.length === 0) return;
     setExporting(true);
     setError(null);
     try {
-      await exportBakedModel(model, transform);
+      await mergeAndExport(sceneObjects);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to export.");
     } finally {
       setExporting(false);
     }
-  }, [model, transform]);
+  }, [sceneObjects]);
 
-  if (!model) {
+  const updateSelectedTransform = useCallback(
+    (transform: import("@/lib/types").ObjectTransform, commit: boolean) => {
+      if (!selectedId) return;
+      const next = {
+        transforms: {
+          ...snapshot.transforms,
+          [selectedId]: cloneTransform(transform),
+        },
+        selectedId,
+      };
+      if (commit) commitSnapshot(next);
+      else setSnapshot(next);
+    },
+    [selectedId, snapshot.transforms, commitSnapshot, setSnapshot],
+  );
+
+  const handleRemove = useCallback(
+    (id: string) => {
+      setObjects((prev) => {
+        const victim = prev.find((o) => o.id === id);
+        if (victim) disposeModel(victim.model);
+        return prev.filter((o) => o.id !== id);
+      });
+      const rest = { ...snapshot.transforms };
+      delete rest[id];
+      const remainingIds = Object.keys(rest);
+      const nextSelected =
+        snapshot.selectedId === id
+          ? remainingIds[remainingIds.length - 1] ?? null
+          : snapshot.selectedId;
+      commitSnapshot({ transforms: rest, selectedId: nextSelected });
+    },
+    [snapshot, commitSnapshot],
+  );
+
+  const handleReset = useCallback(() => {
+    if (!selectedId) return;
+    commitSnapshot({
+      transforms: {
+        ...snapshot.transforms,
+        [selectedId]: cloneTransform(IDENTITY_TRANSFORM),
+      },
+      selectedId,
+    });
+  }, [selectedId, snapshot.transforms, commitSnapshot]);
+
+  if (objects.length === 0) {
     return (
       <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 py-16">
         <div
@@ -93,12 +203,12 @@ export default function Home() {
               OBJ Origin
             </h1>
             <p className="mt-4 max-w-md text-base text-[var(--muted)]">
-              Move and rotate an OBJ relative to the world origin, then export
-              baked vertices.
+              Move, rotate, and scale OBJs relative to the world origin. Add
+              multiple models and export a baked merge.
             </p>
           </header>
 
-          <FileDropzone onFiles={handleFiles} disabled={loading} />
+          <FileDropzone onFiles={handleLoad} disabled={loading} />
 
           {loading && (
             <p className="text-sm text-[var(--muted)]">Loading…</p>
@@ -127,13 +237,26 @@ export default function Home() {
         displayMode={displayMode}
         onGizmoMode={setGizmoMode}
         onDisplayMode={setDisplayMode}
-        onReset={() => commitTransform(IDENTITY)}
+        onReset={handleReset}
         onUndo={undo}
         onRedo={redo}
         onExport={handleExport}
         exporting={exporting}
-        fileSlot={
-          <FileDropzone onFiles={handleFiles} disabled={loading} compact />
+        loadSlot={
+          <FileDropzone
+            onFiles={handleLoad}
+            disabled={loading}
+            compact
+            label="Load…"
+          />
+        }
+        addSlot={
+          <FileDropzone
+            onFiles={handleAdd}
+            disabled={loading}
+            compact
+            label="Add…"
+          />
         }
       />
 
@@ -145,20 +268,39 @@ export default function Home() {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
         <Viewport
-          key={model.objFileName + model.objText.length}
-          object={model.object}
-          transform={transform}
-          onTransformChange={setTransform}
+          items={sceneObjects.map((o) => ({
+            id: o.id,
+            object: o.model.object,
+            transform: o.transform,
+          }))}
+          selectedId={selectedId}
+          onTransformChange={(id, transform) => {
+            setSnapshot({
+              transforms: {
+                ...snapshot.transforms,
+                [id]: cloneTransform(transform),
+              },
+              selectedId: id,
+            });
+          }}
           onGestureStart={beginGesture}
           onGestureEnd={endGesture}
           gizmoMode={gizmoMode}
           displayMode={displayMode}
         />
         <TransformPanel
-          transform={transform}
-          onChange={commitTransform}
-          fileName={model.objFileName}
-          hasMtl={Boolean(model.mtlText)}
+          transform={selected?.transform ?? null}
+          onChange={(t) => updateSelectedTransform(t, true)}
+          models={sceneObjects.map((o) => ({
+            id: o.id,
+            name: o.model.objFileName,
+            hasMtl: Boolean(o.model.mtlText),
+          }))}
+          selectedId={selectedId}
+          onSelectModel={(id) =>
+            commitSnapshot({ ...snapshot, selectedId: id })
+          }
+          onRemoveModel={handleRemove}
         />
       </div>
     </main>

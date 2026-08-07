@@ -22,7 +22,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "OBJ Origin — Modifier",
   description:
-    "Move and rotate an OBJ relative to the world origin, then export baked vertices.",
+    "Move, rotate, and scale OBJs relative to the world origin. Merge multiple models and export baked vertices.",
 };
 
 export default function RootLayout({

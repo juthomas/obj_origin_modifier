@@ -6,12 +6,14 @@ type FileDropzoneProps = {
   onFiles: (files: File[]) => void;
   disabled?: boolean;
   compact?: boolean;
+  label?: string;
 };
 
 export function FileDropzone({
   onFiles,
   disabled,
   compact,
+  label = "Load…",
 }: FileDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -34,7 +36,7 @@ export function FileDropzone({
           onClick={() => inputRef.current?.click()}
           className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] transition hover:border-[var(--accent)] hover:bg-[var(--surface-hover)] disabled:opacity-50"
         >
-          Load…
+          {label}
         </button>
         <input
           ref={inputRef}

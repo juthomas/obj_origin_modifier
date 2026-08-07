@@ -1,6 +1,6 @@
 # OBJ Origin Modifier
 
-Web tool to reposition an OBJ file relative to the **world origin**, then export baked vertices.
+Web tool to reposition, rotate, and scale OBJ files relative to the **world origin**, then export baked vertices. Supports multiple models merged into one export.
 
 ## Stack
 
@@ -11,11 +11,13 @@ Web tool to reposition an OBJ file relative to the **world origin**, then export
 ## Features
 
 - Load `.obj` alone, or `.obj` + `.mtl` + textures
-- Translate / rotate gizmo on the **object** (world origin stays fixed at 0)
-- Numeric position + rotation fields
-- Undo / Redo (`Ctrl/⌘+Z`, `Ctrl/⌘+Shift+Z`)
+- **Load** replaces the scene; **Add** appends more models
+- Translate / rotate / scale gizmo (free XYZ) on the selected object
+- Numeric position, rotation, and scale fields
+- Model list with selection and remove
+- Undo / Redo (`Ctrl/⌘+Z`, `Ctrl/⌘+Shift+Z`) for transforms
 - Solid / Wireframe / Both views
-- Baked export: `v' = R · v + T` — OBJ alone, or ZIP (OBJ + MTL + textures)
+- Merged export: `v' = R · (S · v) + T` — single OBJ, or ZIP (OBJ + MTL + textures)
 
 ## Development
 
@@ -42,6 +44,7 @@ npx vercel
 ## Usage
 
 1. Drop an `.obj` (and optionally `.mtl` + images)
-2. Move / rotate the object with the gizmo or the numeric panel
-3. Choose Solid / Wireframe / Both
-4. Click **Export** (Ctrl/⌘+Z to undo)
+2. Use **Add…** to bring in more models
+3. Select a model in the side list; transform with the gizmo or numeric panel
+4. Choose Solid / Wireframe / Both
+5. Click **Export** to download a baked merge (Ctrl/⌘+Z to undo transforms)
