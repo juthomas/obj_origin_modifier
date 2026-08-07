@@ -1,6 +1,6 @@
 # OBJ Origin Modifier
 
-Web tool to reposition, rotate, and scale OBJ files relative to the **world origin**, then export baked vertices. Supports multiple models merged into one export.
+Web tool to reposition, rotate, and scale OBJ files relative to the **world origin**, then export baked vertices. Supports multiple models merged into one export, and resumable **`.objorig`** projects.
 
 ## Stack
 
@@ -17,7 +17,13 @@ Web tool to reposition, rotate, and scale OBJ files relative to the **world orig
 - Model list with selection and remove
 - Undo / Redo (`Ctrl/⌘+Z`, `Ctrl/⌘+Shift+Z`) for transforms
 - Solid / Wireframe / Both views
+- **Save Project** / **Open Project** — `.objorig` file (models + transforms + MTL/textures)
+- **Auto-save** in the browser (IndexedDB) so a reload restores your scene
 - Merged export: `v' = R · (S · v) + T` — single OBJ, or ZIP (OBJ + MTL + textures)
+
+## Project files (`.objorig`)
+
+A `.objorig` file is a ZIP containing `project.json` plus each model’s OBJ/MTL/textures. Use **Save Project** to download one, and **Open Project** (or drop it on the landing page) to resume later. This is separate from **Export**, which bakes and merges geometry.
 
 ## Development
 
@@ -43,8 +49,8 @@ npx vercel
 
 ## Usage
 
-1. Drop an `.obj` (and optionally `.mtl` + images)
+1. Drop an `.obj` (and optionally `.mtl` + images), or open a `.objorig` project
 2. Use **Add…** to bring in more models
 3. Select a model in the side list; transform with the gizmo or numeric panel
-4. Choose Solid / Wireframe / Both
+4. **Save Project** to resume later (`.objorig`)
 5. Click **Export** to download a baked merge (Ctrl/⌘+Z to undo transforms)

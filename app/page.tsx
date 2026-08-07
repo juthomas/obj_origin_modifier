@@ -7,6 +7,12 @@ import { TransformPanel } from "@/components/TransformPanel";
 import { Viewport } from "@/components/Viewport";
 import { mergeAndExport } from "@/lib/bakeObj";
 import { disposeModel, loadModelFromFiles } from "@/lib/loadModel";
+import {
+  isProjectFile,
+  loadProject,
+  PROJECT_EXTENSION,
+  saveProject,
+} from "@/lib/projectFile";
 import { useSceneHistory } from "@/lib/useSceneHistory";
 import {
   IDENTITY_TRANSFORM,
@@ -37,9 +43,9 @@ export default function Home() {
   const [displayMode, setDisplayMode] = useState<DisplayMode>("solid");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [savingProject, setSavingProject] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Merge history transforms onto objects for rendering
   const sceneObjects = useMemo(() => {
     return objects.map((obj) => ({
       ...obj,
@@ -69,6 +75,24 @@ export default function Home() {
     [resetHistory],
   );
 
+  const replaceWithProject = useCallback(
+    (nextObjects: SceneObject[], nextSelectedId: string | null) => {
+      setObjects((prev) => {
+        for (const o of prev) disposeModel(o.model);
+        return nextObjects;
+      });
+      const transforms: Record<string, ReturnType<typeof cloneTransform>> = {};
+      for (const o of nextObjects) {
+        transforms[o.id] = cloneTransform(o.transform);
+      }
+      resetHistory({
+        transforms,
+        selectedId: nextSelectedId,
+      });
+    },
+    [resetHistory],
+  );
+
   const addToScene = useCallback(
     (loaded: Awaited<ReturnType<typeof loadModelFromFiles>>) => {
       const id = newId();
@@ -85,8 +109,30 @@ export default function Home() {
     [commitSnapshot, snapshot.transforms],
   );
 
+  const handleOpenProject = useCallback(
+    async (files: File[]) => {
+      const project = files.find(isProjectFile) ?? files[0];
+      if (!project) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await loadProject(project);
+        replaceWithProject(result.objects, result.selectedId);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to open project.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [replaceWithProject],
+  );
+
   const handleLoad = useCallback(
     async (files: File[]) => {
+      if (files.some(isProjectFile)) {
+        await handleOpenProject(files);
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
@@ -98,11 +144,17 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [replaceScene],
+    [replaceScene, handleOpenProject],
   );
 
   const handleAdd = useCallback(
     async (files: File[]) => {
+      if (files.some(isProjectFile)) {
+        setError(
+          `Use Open Project to load a ${PROJECT_EXTENSION} file (Add is for OBJ models).`,
+        );
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
@@ -116,6 +168,19 @@ export default function Home() {
     },
     [addToScene],
   );
+
+  const handleSaveProject = useCallback(async () => {
+    if (sceneObjects.length === 0) return;
+    setSavingProject(true);
+    setError(null);
+    try {
+      await saveProject(sceneObjects, selectedId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save project.");
+    } finally {
+      setSavingProject(false);
+    }
+  }, [sceneObjects, selectedId]);
 
   const handleExport = useCallback(async () => {
     if (sceneObjects.length === 0) return;
@@ -204,11 +269,20 @@ export default function Home() {
             </h1>
             <p className="mt-4 max-w-md text-base text-[var(--muted)]">
               Move, rotate, and scale OBJs relative to the world origin. Add
-              multiple models and export a baked merge.
+              multiple models, save a .objorig project, or export a baked merge.
             </p>
           </header>
 
           <FileDropzone onFiles={handleLoad} disabled={loading} />
+
+          <FileDropzone
+            onFiles={handleOpenProject}
+            disabled={loading}
+            compact
+            label="Open Project…"
+            accept=".objorig"
+            multiple={false}
+          />
 
           {loading && (
             <p className="text-sm text-[var(--muted)]">Loading…</p>
@@ -241,6 +315,8 @@ export default function Home() {
         onUndo={undo}
         onRedo={redo}
         onExport={handleExport}
+        onSaveProject={handleSaveProject}
+        savingProject={savingProject}
         exporting={exporting}
         loadSlot={
           <FileDropzone
@@ -248,6 +324,7 @@ export default function Home() {
             disabled={loading}
             compact
             label="Load…"
+            accept=".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif,.objorig"
           />
         }
         addSlot={
@@ -256,6 +333,17 @@ export default function Home() {
             disabled={loading}
             compact
             label="Add…"
+            accept=".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif"
+          />
+        }
+        openProjectSlot={
+          <FileDropzone
+            onFiles={handleOpenProject}
+            disabled={loading}
+            compact
+            label="Open Project…"
+            accept=".objorig"
+            multiple={false}
           />
         }
       />

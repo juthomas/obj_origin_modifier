@@ -11,9 +11,12 @@ type ToolbarProps = {
   onUndo?: () => void;
   onRedo?: () => void;
   onExport: () => void;
+  onSaveProject?: () => void;
+  savingProject?: boolean;
   exporting?: boolean;
   loadSlot?: React.ReactNode;
   addSlot?: React.ReactNode;
+  openProjectSlot?: React.ReactNode;
 };
 
 function Segmented<T extends string>({
@@ -54,9 +57,12 @@ export function Toolbar({
   onUndo,
   onRedo,
   onExport,
+  onSaveProject,
+  savingProject,
   exporting,
   loadSlot,
   addSlot,
+  openProjectSlot,
 }: ToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] bg-[var(--panel)] px-4 py-2.5">
@@ -93,6 +99,18 @@ export function Toolbar({
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {loadSlot}
         {addSlot}
+        {openProjectSlot}
+        {onSaveProject && (
+          <button
+            type="button"
+            onClick={onSaveProject}
+            disabled={savingProject}
+            title="Save .objorig project"
+            className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50"
+          >
+            {savingProject ? "Saving…" : "Save Project"}
+          </button>
+        )}
         {onUndo && (
           <button
             type="button"

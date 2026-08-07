@@ -7,6 +7,10 @@ type FileDropzoneProps = {
   disabled?: boolean;
   compact?: boolean;
   label?: string;
+  accept?: string;
+  multiple?: boolean;
+  hint?: string;
+  title?: string;
 };
 
 export function FileDropzone({
@@ -14,6 +18,10 @@ export function FileDropzone({
   disabled,
   compact,
   label = "Load…",
+  accept = ".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif,.objorig",
+  multiple = true,
+  hint,
+  title,
 }: FileDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -41,8 +49,8 @@ export function FileDropzone({
         <input
           ref={inputRef}
           type="file"
-          multiple
-          accept=".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif"
+          multiple={multiple}
+          accept={accept}
           className="hidden"
           onChange={(e) => {
             handleFiles(e.target.files);
@@ -86,10 +94,10 @@ export function FileDropzone({
     >
       <div className="text-center">
         <p className="text-base font-medium text-[var(--foreground)]">
-          Drop your OBJ model
+          {title ?? "Drop your OBJ model"}
         </p>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          .obj alone, or .obj + .mtl + textures
+          {hint ?? ".obj alone, or .obj + .mtl + textures — or a .objorig project"}
         </p>
       </div>
       <span className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)]">
@@ -98,8 +106,8 @@ export function FileDropzone({
       <input
         ref={inputRef}
         type="file"
-        multiple
-        accept=".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif"
+        multiple={multiple}
+        accept={accept}
         className="hidden"
         onChange={(e) => {
           handleFiles(e.target.files);
