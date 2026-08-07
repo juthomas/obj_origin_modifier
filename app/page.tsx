@@ -1,11 +1,17 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileDropzone } from "@/components/FileDropzone";
+import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { Toolbar } from "@/components/Toolbar";
 import { TransformPanel } from "@/components/TransformPanel";
 import { Viewport } from "@/components/Viewport";
 import { mergeAndExport } from "@/lib/bakeObj";
+import {
+  clearLocalProject,
+  loadLocalProject,
+  saveLocalProject,
+} from "@/lib/localProject";
 import { disposeModel, loadModelFromFiles } from "@/lib/loadModel";
 import {
   isProjectFile,
@@ -42,9 +48,18 @@ export default function Home() {
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>("translate");
   const [displayMode, setDisplayMode] = useState<DisplayMode>("solid");
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("Loading…");
   const [exporting, setExporting] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const skipAutosaveRef = useRef(true);
+
+  const startLoading = useCallback((message: string) => {
+    setLoadingMessage(message);
+    setLoading(true);
+    setError(null);
+  }, []);
 
   const sceneObjects = useMemo(() => {
     return objects.map((obj) => ({
@@ -93,6 +108,49 @@ export default function Home() {
     [resetHistory],
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const saved = await loadLocalProject();
+        if (cancelled || !saved) return;
+        replaceWithProject(saved.objects, saved.selectedId);
+      } catch {
+        await clearLocalProject().catch(() => undefined);
+      } finally {
+        if (!cancelled) {
+          setHydrated(true);
+          requestAnimationFrame(() => {
+            skipAutosaveRef.current = false;
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [replaceWithProject]);
+
+  useEffect(() => {
+    if (!hydrated || skipAutosaveRef.current) return;
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          if (sceneObjects.length === 0) {
+            await clearLocalProject();
+          } else {
+            await saveLocalProject(sceneObjects, selectedId);
+          }
+        } catch {
+          // Quota / private mode — non-fatal
+        }
+      })();
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+  }, [hydrated, sceneObjects, selectedId]);
+
   const addToScene = useCallback(
     (loaded: Awaited<ReturnType<typeof loadModelFromFiles>>) => {
       const id = newId();
@@ -113,8 +171,7 @@ export default function Home() {
     async (files: File[]) => {
       const project = files.find(isProjectFile) ?? files[0];
       if (!project) return;
-      setLoading(true);
-      setError(null);
+      startLoading("Opening project…");
       try {
         const result = await loadProject(project);
         replaceWithProject(result.objects, result.selectedId);
@@ -124,7 +181,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [replaceWithProject],
+    [replaceWithProject, startLoading],
   );
 
   const handleLoad = useCallback(
@@ -133,8 +190,7 @@ export default function Home() {
         await handleOpenProject(files);
         return;
       }
-      setLoading(true);
-      setError(null);
+      startLoading("Loading model…");
       try {
         const loaded = await loadModelFromFiles(files);
         replaceScene(loaded);
@@ -144,7 +200,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [replaceScene, handleOpenProject],
+    [replaceScene, handleOpenProject, startLoading],
   );
 
   const handleAdd = useCallback(
@@ -155,8 +211,7 @@ export default function Home() {
         );
         return;
       }
-      setLoading(true);
-      setError(null);
+      startLoading("Adding model…");
       try {
         const loaded = await loadModelFromFiles(files);
         addToScene(loaded);
@@ -166,7 +221,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [addToScene],
+    [addToScene, startLoading],
   );
 
   const handleSaveProject = useCallback(async () => {
@@ -241,6 +296,14 @@ export default function Home() {
     });
   }, [selectedId, snapshot.transforms, commitSnapshot]);
 
+  if (!hydrated) {
+    return (
+      <main className="relative flex min-h-screen items-center justify-center bg-[var(--background)]">
+        <LoadingOverlay message="Restoring project…" fullscreen />
+      </main>
+    );
+  }
+
   if (objects.length === 0) {
     return (
       <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 py-16">
@@ -270,40 +333,36 @@ export default function Home() {
             <p className="mt-4 max-w-md text-base text-[var(--muted)]">
               Move, rotate, and scale OBJs relative to the world origin. Add
               multiple models, save a .objorig project, or export a baked merge.
+              Your scene is auto-saved in this browser.
             </p>
           </header>
 
           <FileDropzone onFiles={handleLoad} disabled={loading} />
 
-          <FileDropzone
-            onFiles={handleOpenProject}
-            disabled={loading}
-            compact
-            label="Open Project…"
-            accept=".objorig"
-            multiple={false}
-          />
-
-          {loading && (
-            <p className="text-sm text-[var(--muted)]">Loading…</p>
-          )}
           {error && (
             <p className="text-sm text-red-400" role="alert">
               {error}
             </p>
           )}
         </div>
+
+        {loading && (
+          <LoadingOverlay message={loadingMessage} fullscreen />
+        )}
       </main>
     );
   }
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden">
+    <main className="relative flex h-screen flex-col overflow-hidden">
       <header className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--panel)] px-4 py-2">
         <h1 className="font-[family-name:var(--font-display)] text-lg tracking-tight text-[var(--foreground)]">
           OBJ Origin
         </h1>
         <span className="text-xs text-[var(--muted)]">Modifier</span>
+        <span className="ml-auto text-[10px] uppercase tracking-wider text-[var(--muted)]">
+          Auto-saved
+        </span>
       </header>
 
       <Toolbar
@@ -354,7 +413,7 @@ export default function Home() {
         </div>
       )}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
         <Viewport
           items={sceneObjects.map((o) => ({
             id: o.id,
@@ -390,6 +449,8 @@ export default function Home() {
           }
           onRemoveModel={handleRemove}
         />
+
+        {loading && <LoadingOverlay message={loadingMessage} />}
       </div>
     </main>
   );
