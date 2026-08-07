@@ -13,6 +13,7 @@ type ToolbarProps = {
   onExport: () => void;
   onSaveProject?: () => void;
   savingProject?: boolean;
+  savingProgress?: number;
   exporting?: boolean;
   loadSlot?: React.ReactNode;
   addSlot?: React.ReactNode;
@@ -59,6 +60,7 @@ export function Toolbar({
   onExport,
   onSaveProject,
   savingProject,
+  savingProgress = 0,
   exporting,
   loadSlot,
   addSlot,
@@ -92,6 +94,7 @@ export function Toolbar({
             { id: "solid", label: "Solid" },
             { id: "wireframe", label: "Wireframe" },
             { id: "both", label: "Both" },
+            { id: "points", label: "Points" },
           ]}
         />
       </div>
@@ -106,9 +109,20 @@ export function Toolbar({
             onClick={onSaveProject}
             disabled={savingProject}
             title="Save .objorig project"
-            className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50"
+            className="relative min-w-[7.5rem] overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-hover)] disabled:opacity-90"
           >
-            {savingProject ? "Saving…" : "Save Project"}
+            {savingProject && (
+              <span
+                className="absolute inset-y-0 left-0 bg-[var(--accent-soft)] transition-[width] duration-150 ease-out"
+                style={{ width: `${Math.max(0, Math.min(100, savingProgress))}%` }}
+                aria-hidden
+              />
+            )}
+            <span className="relative z-10 tabular-nums">
+              {savingProject
+                ? `Saving ${Math.round(savingProgress)}%`
+                : "Save Project"}
+            </span>
           </button>
         )}
         {onUndo && (

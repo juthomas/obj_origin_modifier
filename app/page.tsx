@@ -51,14 +51,22 @@ export default function Home() {
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
   const [exporting, setExporting] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
+  const [savingProgress, setSavingProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [sceneReady, setSceneReady] = useState(false);
   const skipAutosaveRef = useRef(true);
 
-  const startLoading = useCallback((message: string) => {
+  const startLoading = useCallback(async (message: string) => {
     setLoadingMessage(message);
     setLoading(true);
     setError(null);
+    // Let the overlay paint before OBJ parse blocks the main thread.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
   }, []);
 
   const sceneObjects = useMemo(() => {
@@ -78,6 +86,7 @@ export default function Home() {
     (loaded: Awaited<ReturnType<typeof loadModelFromFiles>>) => {
       const id = newId();
       const transform = cloneTransform(IDENTITY_TRANSFORM);
+      setSceneReady(false);
       setObjects((prev) => {
         for (const o of prev) disposeModel(o.model);
         return [{ id, model: loaded, transform }];
@@ -92,6 +101,7 @@ export default function Home() {
 
   const replaceWithProject = useCallback(
     (nextObjects: SceneObject[], nextSelectedId: string | null) => {
+      setSceneReady(false);
       setObjects((prev) => {
         for (const o of prev) disposeModel(o.model);
         return nextObjects;
@@ -167,11 +177,15 @@ export default function Home() {
     [commitSnapshot, snapshot.transforms],
   );
 
+  useEffect(() => {
+    if (objects.length === 0) setSceneReady(false);
+  }, [objects.length]);
+
   const handleOpenProject = useCallback(
     async (files: File[]) => {
       const project = files.find(isProjectFile) ?? files[0];
       if (!project) return;
-      startLoading("Opening project…");
+      await startLoading("Opening project…");
       try {
         const result = await loadProject(project);
         replaceWithProject(result.objects, result.selectedId);
@@ -190,7 +204,7 @@ export default function Home() {
         await handleOpenProject(files);
         return;
       }
-      startLoading("Loading model…");
+      await startLoading("Loading model…");
       try {
         const loaded = await loadModelFromFiles(files);
         replaceScene(loaded);
@@ -211,7 +225,7 @@ export default function Home() {
         );
         return;
       }
-      startLoading("Adding model…");
+      await startLoading("Adding model…");
       try {
         const loaded = await loadModelFromFiles(files);
         addToScene(loaded);
@@ -227,13 +241,15 @@ export default function Home() {
   const handleSaveProject = useCallback(async () => {
     if (sceneObjects.length === 0) return;
     setSavingProject(true);
+    setSavingProgress(0);
     setError(null);
     try {
-      await saveProject(sceneObjects, selectedId);
+      await saveProject(sceneObjects, selectedId, undefined, setSavingProgress);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save project.");
     } finally {
       setSavingProject(false);
+      setSavingProgress(0);
     }
   }, [sceneObjects, selectedId]);
 
@@ -376,6 +392,7 @@ export default function Home() {
         onExport={handleExport}
         onSaveProject={handleSaveProject}
         savingProject={savingProject}
+        savingProgress={savingProgress}
         exporting={exporting}
         loadSlot={
           <FileDropzone
@@ -434,6 +451,7 @@ export default function Home() {
           onGestureEnd={endGesture}
           gizmoMode={gizmoMode}
           displayMode={displayMode}
+          onReady={() => setSceneReady(true)}
         />
         <TransformPanel
           transform={selected?.transform ?? null}
@@ -450,7 +468,12 @@ export default function Home() {
           onRemoveModel={handleRemove}
         />
 
-        {loading && <LoadingOverlay message={loadingMessage} />}
+        {(loading || !sceneReady) && (
+          <LoadingOverlay
+            message={loading ? loadingMessage : "Loading scene…"}
+            fullscreen
+          />
+        )}
       </div>
     </main>
   );

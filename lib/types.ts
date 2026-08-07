@@ -1,5 +1,5 @@
 export type GizmoMode = "translate" | "rotate" | "scale";
-export type DisplayMode = "solid" | "wireframe" | "both";
+export type DisplayMode = "solid" | "wireframe" | "both" | "points";
 
 /** Object position + rotation + scale relative to the fixed world origin */
 export type ObjectTransform = {

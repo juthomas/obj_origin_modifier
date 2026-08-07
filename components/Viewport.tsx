@@ -123,12 +123,41 @@ type ViewportProps = {
   onGestureEnd: () => void;
   gizmoMode: GizmoMode;
   displayMode: DisplayMode;
+  onReady?: () => void;
 };
+
+/** Fires after the canvas has painted at least one frame with scene items. */
+function SceneReadySignal({
+  itemCount,
+  itemKey,
+  onReady,
+}: {
+  itemCount: number;
+  itemKey: string;
+  onReady?: () => void;
+}) {
+  useEffect(() => {
+    if (!onReady || itemCount === 0) return;
+    let cancelled = false;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!cancelled) onReady();
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [itemCount, itemKey, onReady]);
+  return null;
+}
 
 function applyDisplayMode(root: THREE.Object3D, mode: DisplayMode) {
   const wireframe = mode === "wireframe";
+  const hideMesh = mode === "points";
   root.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
+    child.visible = !hideMesh;
     const mats = Array.isArray(child.material)
       ? child.material
       : [child.material];
@@ -163,6 +192,44 @@ function EdgeLine({
   );
 }
 
+function PointCloud({
+  geometry,
+  matrix,
+}: {
+  geometry: THREE.BufferGeometry;
+  matrix: THREE.Matrix4;
+}) {
+  const ref = useRef<THREE.Points>(null);
+
+  useLayoutEffect(() => {
+    const pts = ref.current;
+    if (!pts) return;
+    pts.matrixAutoUpdate = false;
+    pts.matrix.copy(matrix);
+  }, [matrix]);
+
+  return (
+    <points ref={ref} geometry={geometry}>
+      <pointsMaterial color="#d0d8e0" size={2} sizeAttenuation={false} />
+    </points>
+  );
+}
+
+function collectMeshItems(object: THREE.Group) {
+  const items: { geometry: THREE.BufferGeometry; matrix: THREE.Matrix4 }[] = [];
+  object.updateMatrixWorld(true);
+  const invRoot = object.matrixWorld.clone().invert();
+  object.traverse((child) => {
+    if (child instanceof THREE.Mesh && child.geometry) {
+      items.push({
+        geometry: child.geometry,
+        matrix: invRoot.clone().multiply(child.matrixWorld),
+      });
+    }
+  });
+  return items;
+}
+
 function ModelView({
   object,
   displayMode,
@@ -171,20 +238,16 @@ function ModelView({
   displayMode: DisplayMode;
 }) {
   const edgeItems = useMemo(() => {
-    const items: { geometry: THREE.BufferGeometry; matrix: THREE.Matrix4 }[] =
-      [];
-    object.updateMatrixWorld(true);
-    const invRoot = object.matrixWorld.clone().invert();
-    object.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.geometry) {
-        items.push({
-          geometry: new THREE.EdgesGeometry(child.geometry, 20),
-          matrix: invRoot.clone().multiply(child.matrixWorld),
-        });
-      }
-    });
-    return items;
+    return collectMeshItems(object).map((item) => ({
+      geometry: new THREE.EdgesGeometry(item.geometry, 20),
+      matrix: item.matrix,
+    }));
   }, [object]);
+
+  const pointItems = useMemo(() => {
+    if (displayMode !== "points") return [];
+    return collectMeshItems(object);
+  }, [object, displayMode]);
 
   useEffect(() => {
     return () => {
@@ -202,6 +265,10 @@ function ModelView({
       {displayMode === "both" &&
         edgeItems.map((item, i) => (
           <EdgeLine key={i} geometry={item.geometry} matrix={item.matrix} />
+        ))}
+      {displayMode === "points" &&
+        pointItems.map((item, i) => (
+          <PointCloud key={i} geometry={item.geometry} matrix={item.matrix} />
         ))}
     </group>
   );
@@ -294,6 +361,111 @@ function FitCamera({ objects }: { objects: THREE.Object3D[] }) {
   }, [idKey, controls]);
 
   return null;
+}
+
+/** Clears stuck orbit drag when the pointer is released outside the window. */
+function SafeOrbitControls({
+  enabled,
+  target,
+}: {
+  enabled: boolean;
+  target: [number, number, number];
+}) {
+  const controlsRef = useRef<{ domElement: HTMLElement | null } | null>(null);
+
+  useEffect(() => {
+    let cleaned = false;
+    let detach: (() => void) | null = null;
+
+    const attach = () => {
+      const dom = controlsRef.current?.domElement;
+      if (cleaned || detach) return true;
+      if (!dom) return false;
+
+      let activePointerId: number | null = null;
+
+      const clearActive = () => {
+        activePointerId = null;
+      };
+
+      const forceEnd = () => {
+        if (activePointerId === null) return;
+        const pointerId = activePointerId;
+        activePointerId = null;
+        // three-stdlib OrbitControls listens on ownerDocument; synthetic up clears stuck drag
+        dom.ownerDocument.dispatchEvent(
+          new PointerEvent("pointerup", {
+            bubbles: true,
+            cancelable: true,
+            pointerId,
+            pointerType: "mouse",
+            button: 0,
+            buttons: 0,
+            view: window,
+          }),
+        );
+      };
+
+      const onPointerDown = (event: PointerEvent) => {
+        activePointerId = event.pointerId;
+      };
+
+      const onPointerUp = (event: PointerEvent) => {
+        if (event.pointerId === activePointerId) clearActive();
+      };
+
+      const onPointerMove = (event: PointerEvent) => {
+        // Released outside the window: buttons is 0 but controls still think we're dragging
+        if (event.buttons === 0 && activePointerId !== null) {
+          forceEnd();
+        }
+      };
+
+      const onBlur = () => forceEnd();
+
+      dom.addEventListener("pointerdown", onPointerDown);
+      document.addEventListener("pointerup", onPointerUp);
+      document.addEventListener("pointercancel", onPointerUp);
+      document.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("blur", onBlur);
+
+      detach = () => {
+        dom.removeEventListener("pointerdown", onPointerDown);
+        document.removeEventListener("pointerup", onPointerUp);
+        document.removeEventListener("pointercancel", onPointerUp);
+        document.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("blur", onBlur);
+      };
+      return true;
+    };
+
+    let pollId: number | null = null;
+    if (!attach()) {
+      pollId = window.setInterval(() => {
+        if (attach() && pollId !== null) {
+          window.clearInterval(pollId);
+          pollId = null;
+        }
+      }, 50);
+    }
+
+    return () => {
+      cleaned = true;
+      if (pollId !== null) window.clearInterval(pollId);
+      detach?.();
+    };
+  }, []);
+
+  return (
+    <OrbitControls
+      ref={controlsRef as never}
+      makeDefault
+      enabled={enabled}
+      enableDamping
+      dampingFactor={0.08}
+      target={target}
+    />
+  );
 }
 
 function SceneContent({
@@ -400,13 +572,7 @@ function SceneContent({
 
       <FitCamera objects={items.map((i) => i.object)} />
 
-      <OrbitControls
-        makeDefault
-        enabled={orbitEnabled}
-        enableDamping
-        dampingFactor={0.08}
-        target={[0, 0, 0]}
-      />
+      <SafeOrbitControls enabled={orbitEnabled} target={[0, 0, 0]} />
 
       <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
         <GizmoViewport
@@ -418,7 +584,9 @@ function SceneContent({
   );
 }
 
-export function Viewport(props: ViewportProps) {
+export function Viewport({ onReady, ...props }: ViewportProps) {
+  const itemKey = props.items.map((item) => item.id).join(",");
+
   return (
     <div className="relative h-full min-h-[320px] min-w-0 flex-1 overflow-hidden bg-[#0b0d10]">
       <Canvas
@@ -429,6 +597,11 @@ export function Viewport(props: ViewportProps) {
         }}
       >
         <SceneContent {...props} />
+        <SceneReadySignal
+          itemCount={props.items.length}
+          itemKey={itemKey}
+          onReady={onReady}
+        />
       </Canvas>
     </div>
   );

@@ -46,15 +46,22 @@ export function isProjectFile(file: File): boolean {
 export async function buildProjectBlob(
   objects: SceneObject[],
   selectedId: string | null,
+  onProgress?: (percent: number) => void,
 ): Promise<Blob> {
   if (objects.length === 0) {
     throw new Error("Nothing to save.");
   }
 
+  const report = (percent: number) => {
+    onProgress?.(Math.max(0, Math.min(100, Math.round(percent))));
+  };
+
   const zip = new JSZip();
   const models: ProjectModelMeta[] = [];
+  const packWeight = 20;
 
-  for (const obj of objects) {
+  for (let i = 0; i < objects.length; i++) {
+    const obj = objects[i];
     const dir = `models/${obj.id}`;
     zip.file(`${dir}/model.obj`, obj.model.objText);
 
@@ -65,7 +72,7 @@ export async function buildProjectBlob(
       if (seen.has(name)) continue;
       seen.add(name);
       textureFiles.push(name);
-      zip.file(`${dir}/textures/${name}`, file);
+      zip.file(`${dir}/textures/${name}`, await file.arrayBuffer());
     }
 
     if (obj.model.mtlText && obj.model.mtlFileName) {
@@ -80,6 +87,8 @@ export async function buildProjectBlob(
       transform: cloneTransform(obj.transform),
       textureFiles,
     });
+
+    report(((i + 1) / objects.length) * packWeight);
   }
 
   const project: ProjectJson = {
@@ -88,16 +97,20 @@ export async function buildProjectBlob(
     models,
   };
   zip.file("project.json", JSON.stringify(project, null, 2));
+  report(packWeight);
 
-  return zip.generateAsync({ type: "blob" });
+  return zip.generateAsync({ type: "blob" }, (metadata) => {
+    report(packWeight + (metadata.percent / 100) * (100 - packWeight));
+  });
 }
 
 export async function saveProject(
   objects: SceneObject[],
   selectedId: string | null,
   filename?: string,
+  onProgress?: (percent: number) => void,
 ): Promise<void> {
-  const blob = await buildProjectBlob(objects, selectedId);
+  const blob = await buildProjectBlob(objects, selectedId, onProgress);
 
   const outName =
     filename ??
@@ -111,6 +124,7 @@ export async function saveProject(
       ? outName
       : `${outName}${PROJECT_EXTENSION}`,
   );
+  onProgress?.(100);
 }
 
 export async function loadProjectFromBlob(
