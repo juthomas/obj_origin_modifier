@@ -27,6 +27,13 @@ function isModelAssetName(name: string): boolean {
   );
 }
 
+/** Let the browser paint (e.g. loading overlay) before heavy main-thread work. */
+export function yieldToMain(ms = 32): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 /** Unpack .zip model packs (e.g. Meshy) into flat OBJ/MTL/texture Files. */
 export async function expandModelArchives(files: File[]): Promise<File[]> {
   const out: File[] = [];
@@ -37,7 +44,10 @@ export async function expandModelArchives(files: File[]): Promise<File[]> {
       continue;
     }
 
-    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    const buffer = await file.arrayBuffer();
+    await yieldToMain();
+    const zip = await JSZip.loadAsync(buffer);
+    await yieldToMain();
     let foundAsset = false;
 
     for (const [path, entry] of Object.entries(zip.files)) {
@@ -56,6 +66,8 @@ export async function expandModelArchives(files: File[]): Promise<File[]> {
           : blob.type || undefined;
       out.push(new File([blob], name, type ? { type } : undefined));
       foundAsset = true;
+      // Large Meshy OBJs — yield so the loading spinner can keep animating.
+      if (blob.size > 1_000_000) await yieldToMain(16);
     }
 
     if (!foundAsset) {
@@ -96,7 +108,18 @@ function waitForManager(manager: THREE.LoadingManager): Promise<void> {
   });
 }
 
-export async function loadModelFromFiles(files: File[]): Promise<LoadedModel> {
+export type LoadModelStatus = (message: string) => void;
+
+export async function loadModelFromFiles(
+  files: File[],
+  onStatus?: LoadModelStatus,
+): Promise<LoadedModel> {
+  const hasZip = files.some(isModelArchive);
+  if (hasZip) {
+    onStatus?.("Unpacking archive…");
+    await yieldToMain();
+  }
+
   const expanded = await expandModelArchives(files);
   const objFile = expanded.find((f) => f.name.toLowerCase().endsWith(".obj"));
   if (!objFile) {
@@ -114,13 +137,11 @@ export async function loadModelFromFiles(files: File[]): Promise<LoadedModel> {
     textures.set(file.name, file);
   }
 
+  onStatus?.("Reading model…");
+  await yieldToMain();
   const objText = await objFile.text();
   const mtlText = mtlFile ? await mtlFile.text() : null;
-
-  // Yield so React can paint the loading overlay before heavy parse work.
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => resolve());
-  });
+  await yieldToMain();
 
   const manager = new THREE.LoadingManager();
   manager.setURLModifier((url) => {
@@ -146,16 +167,22 @@ export async function loadModelFromFiles(files: File[]): Promise<LoadedModel> {
   let object: THREE.Group;
 
   if (mtlText && mtlFile) {
+    onStatus?.("Loading textures…");
+    await yieldToMain();
     const texturesReady = waitForManager(manager);
     const mtlLoader = new MTLLoader(manager);
     const materials = mtlLoader.parse(mtlText, "");
     materials.preload();
     await texturesReady;
 
+    onStatus?.("Parsing model…");
+    await yieldToMain();
     const objLoader = new OBJLoader(manager);
     objLoader.setMaterials(materials);
     object = objLoader.parse(objText);
   } else {
+    onStatus?.("Parsing model…");
+    await yieldToMain();
     const objLoader = new OBJLoader(manager);
     object = objLoader.parse(objText);
   }

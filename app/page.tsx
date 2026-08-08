@@ -66,12 +66,16 @@ export default function Home() {
       setLoading(true);
       setError(null);
     });
-    // Let the overlay paint before OBJ/texture work blocks the main thread.
+    // setTimeout (not only rAF) so the overlay actually paints before JSZip / OBJ parse.
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => resolve());
+        setTimeout(resolve, 32);
       });
     });
+  }, []);
+
+  const reportLoadStatus = useCallback((message: string) => {
+    flushSync(() => setLoadingMessage(message));
   }, []);
 
   const sceneObjects = useMemo(() => {
@@ -211,7 +215,7 @@ export default function Home() {
       }
       await startLoading("Loading model…");
       try {
-        const loaded = await loadModelFromFiles(files);
+        const loaded = await loadModelFromFiles(files, reportLoadStatus);
         replaceScene(loaded);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load model.");
@@ -219,7 +223,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [replaceScene, handleOpenProject, startLoading],
+    [replaceScene, handleOpenProject, startLoading, reportLoadStatus],
   );
 
   const handleAdd = useCallback(
@@ -230,9 +234,12 @@ export default function Home() {
         );
         return;
       }
-      await startLoading("Adding model…");
+      const initial = files.some((f) => f.name.toLowerCase().endsWith(".zip"))
+        ? "Unpacking archive…"
+        : "Adding model…";
+      await startLoading(initial);
       try {
-        const loaded = await loadModelFromFiles(files);
+        const loaded = await loadModelFromFiles(files, reportLoadStatus);
         addToScene(loaded);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to add model.");
@@ -240,7 +247,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [addToScene, startLoading],
+    [addToScene, startLoading, reportLoadStatus],
   );
 
   const handleSaveProject = useCallback(async () => {
@@ -489,11 +496,8 @@ export default function Home() {
           onRemoveModel={handleRemove}
         />
 
-        {(loading || !sceneReady) && (
-          <LoadingOverlay
-            message={loading ? loadingMessage : "Loading scene…"}
-            fullscreen
-          />
+        {!loading && !sceneReady && (
+          <LoadingOverlay message="Loading scene…" fullscreen />
         )}
       </div>
 
@@ -503,6 +507,8 @@ export default function Home() {
         onCancel={() => setExportDialogOpen(false)}
         onConfirm={handleConfirmExport}
       />
+
+      {loading && <LoadingOverlay message={loadingMessage} fullscreen />}
     </main>
   );
 }
