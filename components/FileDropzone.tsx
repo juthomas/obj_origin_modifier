@@ -18,7 +18,7 @@ export function FileDropzone({
   disabled,
   compact,
   label = "Load…",
-  accept = ".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif,.objorig",
+  accept = ".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif,.zip,.objorig",
   multiple = true,
   hint,
   title,
@@ -97,7 +97,7 @@ export function FileDropzone({
           {title ?? "Drop your OBJ model"}
         </p>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          {hint ?? ".obj alone, or .obj + .mtl + textures — or a .objorig project"}
+          {hint ?? ".obj, .zip (OBJ+MTL+textures), or a .objorig project"}
         </p>
       </div>
       <span className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)]">

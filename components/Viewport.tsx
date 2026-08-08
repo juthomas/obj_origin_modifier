@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   TransformControls,
@@ -36,7 +36,7 @@ function AxisLabels({ length }: { length: number }) {
 
   const makeLabelOnTop = (mesh: THREE.Mesh | null) => {
     if (!mesh) return;
-    mesh.renderOrder = 1000;
+    mesh.renderOrder = 2000;
     mesh.raycast = () => undefined;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of mats) {
@@ -49,9 +49,9 @@ function AxisLabels({ length }: { length: number }) {
   };
 
   return (
-    <group renderOrder={1000}>
+    <group renderOrder={2000}>
       {axes.map(({ label, color, position }) => (
-        <Billboard key={label} position={position} renderOrder={1000}>
+        <Billboard key={label} position={position} renderOrder={2000}>
           <Text
             ref={makeLabelOnTop}
             fontSize={labelSize}
@@ -60,7 +60,7 @@ function AxisLabels({ length }: { length: number }) {
             anchorY="middle"
             outlineWidth={0.045}
             outlineColor="#0b0d10"
-            renderOrder={1000}
+            renderOrder={2000}
           >
             {label}
           </Text>
@@ -70,36 +70,17 @@ function AxisLabels({ length }: { length: number }) {
   );
 }
 
-function WorldOriginGizmo({ length }: { length: number }) {
-  const helperRef = useRef<THREE.AxesHelper>(null);
-
-  useLayoutEffect(() => {
-    const helper = helperRef.current;
-    if (!helper) return;
-    helper.renderOrder = 1000;
-    const mat = helper.material as THREE.Material | THREE.Material[];
-    const mats = Array.isArray(mat) ? mat : [mat];
-    for (const m of mats) {
-      if (!m) continue;
-      m.depthTest = false;
-      m.depthWrite = false;
-      m.transparent = true;
-      m.needsUpdate = true;
-    }
-  }, []);
-
-  return (
-    <group renderOrder={1000}>
-      <axesHelper ref={helperRef} args={[length]} />
-      <AxisLabels length={length} />
-    </group>
-  );
+function applyAlwaysOnTopMaterial(mat: THREE.Material) {
+  mat.depthTest = false;
+  mat.depthWrite = false;
+  if ("transparent" in mat) mat.transparent = true;
+  mat.needsUpdate = true;
 }
 
-function makeGizmoAlwaysOnTop(root: THREE.Object3D) {
-  root.renderOrder = 1000;
+function makeGizmoAlwaysOnTop(root: THREE.Object3D, renderOrder = 1500) {
+  root.renderOrder = renderOrder;
   root.traverse((obj) => {
-    obj.renderOrder = 1000;
+    obj.renderOrder = renderOrder;
     const mesh = obj as THREE.Mesh;
     if (!mesh.material) return;
     const mats = Array.isArray(mesh.material)
@@ -107,12 +88,58 @@ function makeGizmoAlwaysOnTop(root: THREE.Object3D) {
       : [mesh.material];
     for (const m of mats) {
       if (!m) continue;
-      m.depthTest = false;
-      m.depthWrite = false;
-      if ("transparent" in m) m.transparent = true;
-      m.needsUpdate = true;
+      if (m.depthTest !== false) applyAlwaysOnTopMaterial(m);
     }
   });
+}
+
+function WorldOriginGizmo({ length }: { length: number }) {
+  const helperRef = useRef<THREE.AxesHelper>(null);
+  const preparedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    preparedRef.current = false;
+  }, [length]);
+
+  useLayoutEffect(() => {
+    const helper = helperRef.current;
+    if (!helper || preparedRef.current) return;
+    helper.renderOrder = 2000;
+    helper.raycast = () => undefined;
+
+    const mat = helper.material as THREE.Material | THREE.Material[];
+    if (Array.isArray(mat)) {
+      helper.material = mat.map((m) => {
+        const cloned = m.clone();
+        applyAlwaysOnTopMaterial(cloned);
+        return cloned;
+      });
+    } else if (mat) {
+      const cloned = mat.clone();
+      applyAlwaysOnTopMaterial(cloned);
+      helper.material = cloned;
+    }
+    preparedRef.current = true;
+  }, [length]);
+
+  useFrame(() => {
+    const helper = helperRef.current;
+    if (!helper) return;
+    helper.renderOrder = 2000;
+    const mat = helper.material as THREE.Material | THREE.Material[];
+    const mats = Array.isArray(mat) ? mat : [mat];
+    for (const m of mats) {
+      if (!m) continue;
+      if (m.depthTest !== false) applyAlwaysOnTopMaterial(m);
+    }
+  });
+
+  return (
+    <group renderOrder={2000}>
+      <axesHelper ref={helperRef} args={[length]} />
+      <AxisLabels length={length} />
+    </group>
+  );
 }
 
 type ViewportProps = {
@@ -123,6 +150,7 @@ type ViewportProps = {
   onGestureEnd: () => void;
   gizmoMode: GizmoMode;
   displayMode: DisplayMode;
+  onSelectObject?: (id: string) => void;
   onReady?: () => void;
 };
 
@@ -278,17 +306,18 @@ function SceneObjectGroup({
   item,
   displayMode,
   groupRef,
+  onSelect,
 }: {
   item: ViewportItem;
   displayMode: DisplayMode;
   groupRef?: (node: THREE.Group | null) => void;
+  onSelect?: (id: string) => void;
 }) {
   const localRef = useRef<THREE.Group>(null);
-  const dragging = useRef(false);
 
   useEffect(() => {
     const g = localRef.current;
-    if (!g || dragging.current) return;
+    if (!g) return;
     g.position.set(...item.transform.position);
     g.rotation.set(...item.transform.rotation);
     g.scale.set(...item.transform.scale);
@@ -299,6 +328,10 @@ function SceneObjectGroup({
       ref={(node) => {
         localRef.current = node;
         groupRef?.(node);
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect?.(item.id);
       }}
     >
       <ModelView object={item.object} displayMode={displayMode} />
@@ -476,11 +509,13 @@ function SceneContent({
   onGestureEnd,
   gizmoMode,
   displayMode,
+  onSelectObject,
 }: ViewportProps) {
   const selectedRef = useRef<THREE.Group | null>(null);
   const [target, setTarget] = useState<THREE.Object3D | null>(null);
   const controlsRef = useRef<THREE.Object3D>(null);
   const dragging = useRef(false);
+  const skipSelectRef = useRef(false);
   const [orbitEnabled, setOrbitEnabled] = useState(true);
 
   useLayoutEffect(() => {
@@ -490,8 +525,14 @@ function SceneContent({
   useLayoutEffect(() => {
     const controls = controlsRef.current;
     if (!controls) return;
-    makeGizmoAlwaysOnTop(controls);
+    makeGizmoAlwaysOnTop(controls, 1500);
   }, [target, gizmoMode]);
+
+  useFrame(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    makeGizmoAlwaysOnTop(controls, 1500);
+  });
 
   const gridSize = useMemo(() => {
     const box = new THREE.Box3();
@@ -514,6 +555,11 @@ function SceneContent({
     });
   };
 
+  const handleSelect = (id: string) => {
+    if (dragging.current || skipSelectRef.current) return;
+    onSelectObject?.(id);
+  };
+
   return (
     <>
       <color attach="background" args={["#0b0d10"]} />
@@ -528,6 +574,7 @@ function SceneContent({
           key={item.id}
           item={item}
           displayMode={displayMode}
+          onSelect={handleSelect}
           groupRef={
             item.id === selectedId
               ? (node) => {
@@ -547,6 +594,7 @@ function SceneContent({
           size={0.9}
           onMouseDown={() => {
             dragging.current = true;
+            skipSelectRef.current = true;
             setOrbitEnabled(false);
             onGestureStart();
           }}
@@ -555,6 +603,10 @@ function SceneContent({
             setOrbitEnabled(true);
             syncTransform();
             onGestureEnd();
+            // Ignore the click that follows a gizmo drag/mouseup.
+            requestAnimationFrame(() => {
+              skipSelectRef.current = false;
+            });
           }}
           onObjectChange={syncTransform}
         />

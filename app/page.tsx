@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { FileDropzone } from "@/components/FileDropzone";
 import { ExportNameDialog } from "@/components/ExportNameDialog";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
@@ -60,10 +61,12 @@ export default function Home() {
   const skipAutosaveRef = useRef(true);
 
   const startLoading = useCallback(async (message: string) => {
-    setLoadingMessage(message);
-    setLoading(true);
-    setError(null);
-    // Let the overlay paint before OBJ parse blocks the main thread.
+    flushSync(() => {
+      setLoadingMessage(message);
+      setLoading(true);
+      setError(null);
+    });
+    // Let the overlay paint before OBJ/texture work blocks the main thread.
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => resolve());
@@ -415,7 +418,7 @@ export default function Home() {
             disabled={loading}
             compact
             label="Load…"
-            accept=".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif,.objorig"
+            accept=".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif,.zip,.objorig"
           />
         }
         addSlot={
@@ -424,7 +427,7 @@ export default function Home() {
             disabled={loading}
             compact
             label="Add…"
-            accept=".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif"
+            accept=".obj,.mtl,.png,.jpg,.jpeg,.webp,.gif,.zip"
           />
         }
         openProjectSlot={
@@ -467,6 +470,9 @@ export default function Home() {
           gizmoMode={gizmoMode}
           displayMode={displayMode}
           onReady={() => setSceneReady(true)}
+          onSelectObject={(id) =>
+            commitSnapshot({ ...snapshot, selectedId: id })
+          }
         />
         <TransformPanel
           transform={selected?.transform ?? null}

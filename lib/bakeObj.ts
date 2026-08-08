@@ -225,23 +225,11 @@ function findTextureFile(
   return undefined;
 }
 
-function allocateTextureName(
-  prefix: string,
-  exportBase: string,
-  usedTextureNames: Set<string>,
-): string {
-  let outName = `${prefix}_${exportBase}`;
-  if (!usedTextureNames.has(outName.toLowerCase())) {
-    usedTextureNames.add(outName.toLowerCase());
-    return outName;
-  }
-  let i = 2;
-  while (usedTextureNames.has(`${prefix}_${i}_${exportBase}`.toLowerCase())) {
-    i++;
-  }
-  outName = `${prefix}_${i}_${exportBase}`;
-  usedTextureNames.add(outName.toLowerCase());
-  return outName;
+function textureExtension(fileName: string): string {
+  const base = textureBaseName(fileName);
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0) return ".png";
+  return base.slice(dot);
 }
 
 function mergeMtl(
@@ -251,30 +239,15 @@ function mergeMtl(
   const hasAny = objects.some((o) => o.model.mtlText);
   if (!hasAny) return null;
 
-  const usedTextureNames = new Set<string>();
   const textures = new Map<string, File>();
   const mtlChunks: string[] = [];
   const texPrefix = sanitizePrefix(exportBase);
+  let textureIndex = 0;
 
-  // Count unique texture basenames across models to decide naming scheme.
-  const uniqueTexKeys = new Set<string>();
-  for (const obj of objects) {
-    if (!obj.model.mtlText) continue;
-    for (const [key, file] of obj.model.textures) {
-      const name = (textureBaseName(file.name) || textureBaseName(key)).toLowerCase();
-      uniqueTexKeys.add(name);
-    }
-    // Also count map refs without loaded files so missing maps stay consistent.
-    for (const line of obj.model.mtlText.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const parts = trimmed.split(/\s+/);
-      if (MAP_KEYS.test(parts[0]) && parts.length >= 2) {
-        uniqueTexKeys.add(textureBaseName(parts[parts.length - 1]).toLowerCase());
-      }
-    }
-  }
-  const singleTexture = uniqueTexKeys.size === 1;
+  const nextTextureName = (ext: string) => {
+    textureIndex += 1;
+    return `${texPrefix}_${textureIndex}${ext}`;
+  };
 
   for (const obj of objects) {
     const { model } = obj;
@@ -289,16 +262,7 @@ function mergeMtl(
       const existing = texRename.get(key);
       if (existing) return existing;
 
-      let outName: string;
-      if (singleTexture) {
-        const ext = texFileName.includes(".")
-          ? texFileName.slice(texFileName.lastIndexOf("."))
-          : ".png";
-        outName = `${texPrefix}${ext}`;
-        usedTextureNames.add(outName.toLowerCase());
-      } else {
-        outName = allocateTextureName(texPrefix, texFileName, usedTextureNames);
-      }
+      const outName = nextTextureName(textureExtension(texFileName));
       texRename.set(key, outName);
       textures.set(outName, file);
       return outName;
@@ -330,14 +294,9 @@ function mergeMtl(
           const file = findTextureFile(model.textures, fileName);
           if (file) {
             renamed = registerTexture(file, fileName);
-          } else if (singleTexture) {
-            const ext = fileName.includes(".")
-              ? fileName.slice(fileName.lastIndexOf("."))
-              : ".png";
-            renamed = `${texPrefix}${ext}`;
-            usedTextureNames.add(renamed.toLowerCase());
           } else {
-            renamed = allocateTextureName(texPrefix, fileName, usedTextureNames);
+            // Missing file: still emit a numbered placeholder name in the MTL.
+            renamed = nextTextureName(textureExtension(fileName));
           }
         }
         const opts = parts.slice(1, -1);
