@@ -246,6 +246,7 @@ function allocateTextureName(
 
 function mergeMtl(
   objects: SceneObject[],
+  exportBase: string,
 ): { mtlText: string; textures: Map<string, File> } | null {
   const hasAny = objects.some((o) => o.model.mtlText);
   if (!hasAny) return null;
@@ -253,6 +254,27 @@ function mergeMtl(
   const usedTextureNames = new Set<string>();
   const textures = new Map<string, File>();
   const mtlChunks: string[] = [];
+  const texPrefix = sanitizePrefix(exportBase);
+
+  // Count unique texture basenames across models to decide naming scheme.
+  const uniqueTexKeys = new Set<string>();
+  for (const obj of objects) {
+    if (!obj.model.mtlText) continue;
+    for (const [key, file] of obj.model.textures) {
+      const name = (textureBaseName(file.name) || textureBaseName(key)).toLowerCase();
+      uniqueTexKeys.add(name);
+    }
+    // Also count map refs without loaded files so missing maps stay consistent.
+    for (const line of obj.model.mtlText.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const parts = trimmed.split(/\s+/);
+      if (MAP_KEYS.test(parts[0]) && parts.length >= 2) {
+        uniqueTexKeys.add(textureBaseName(parts[parts.length - 1]).toLowerCase());
+      }
+    }
+  }
+  const singleTexture = uniqueTexKeys.size === 1;
 
   for (const obj of objects) {
     const { model } = obj;
@@ -262,11 +284,21 @@ function mergeMtl(
     const texRename = new Map<string, string>();
 
     const registerTexture = (file: File, preferredName: string) => {
-      const exportBase = textureBaseName(file.name) || preferredName;
-      const key = exportBase.toLowerCase();
+      const texFileName = textureBaseName(file.name) || preferredName;
+      const key = texFileName.toLowerCase();
       const existing = texRename.get(key);
       if (existing) return existing;
-      const outName = allocateTextureName(prefix, exportBase, usedTextureNames);
+
+      let outName: string;
+      if (singleTexture) {
+        const ext = texFileName.includes(".")
+          ? texFileName.slice(texFileName.lastIndexOf("."))
+          : ".png";
+        outName = `${texPrefix}${ext}`;
+        usedTextureNames.add(outName.toLowerCase());
+      } else {
+        outName = allocateTextureName(texPrefix, texFileName, usedTextureNames);
+      }
       texRename.set(key, outName);
       textures.set(outName, file);
       return outName;
@@ -298,9 +330,14 @@ function mergeMtl(
           const file = findTextureFile(model.textures, fileName);
           if (file) {
             renamed = registerTexture(file, fileName);
+          } else if (singleTexture) {
+            const ext = fileName.includes(".")
+              ? fileName.slice(fileName.lastIndexOf("."))
+              : ".png";
+            renamed = `${texPrefix}${ext}`;
+            usedTextureNames.add(renamed.toLowerCase());
           } else {
-            // Keep a deterministic name even if the file was never provided.
-            renamed = allocateTextureName(prefix, fileName, usedTextureNames);
+            renamed = allocateTextureName(texPrefix, fileName, usedTextureNames);
           }
         }
         const opts = parts.slice(1, -1);
@@ -328,18 +365,19 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export async function mergeAndExport(objects: SceneObject[]): Promise<void> {
+export async function mergeAndExport(
+  objects: SceneObject[],
+  baseName: string,
+): Promise<void> {
   if (objects.length === 0) {
     throw new Error("No models to export.");
   }
 
-  const outName =
-    objects.length === 1
-      ? `${objects[0].model.baseName}_rebaked.obj`
-      : "merged.obj";
-  const mtlMerged = mergeMtl(objects);
+  const base = sanitizePrefix(baseName.replace(/\.(obj|zip)$/i, ""));
+  const outName = `${base}.obj`;
+  const mtlMerged = mergeMtl(objects, base);
   // Match OBJ basename so importers that ignore mtllib still find the MTL.
-  const mtlFileName = mtlMerged ? outName.replace(/\.obj$/i, ".mtl") : null;
+  const mtlFileName = mtlMerged ? `${base}.mtl` : null;
 
   let vOff = 0;
   let vtOff = 0;
@@ -389,10 +427,6 @@ export async function mergeAndExport(objects: SceneObject[]): Promise<void> {
     zip.file(name, await file.arrayBuffer());
   }
 
-  const zipName =
-    objects.length === 1
-      ? `${objects[0].model.baseName}_rebaked.zip`
-      : "merged.zip";
   const blob = await zip.generateAsync({ type: "blob" });
-  triggerDownload(blob, zipName);
+  triggerDownload(blob, `${base}.zip`);
 }

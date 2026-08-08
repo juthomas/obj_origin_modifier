@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileDropzone } from "@/components/FileDropzone";
+import { ExportNameDialog } from "@/components/ExportNameDialog";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { Toolbar } from "@/components/Toolbar";
 import { TransformPanel } from "@/components/TransformPanel";
@@ -50,6 +51,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
   const [exporting, setExporting] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
   const [savingProgress, setSavingProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -253,18 +255,31 @@ export default function Home() {
     }
   }, [sceneObjects, selectedId]);
 
-  const handleExport = useCallback(async () => {
+  const defaultExportName =
+    sceneObjects.length === 1
+      ? `${sceneObjects[0].model.baseName}_rebaked`
+      : "merged";
+
+  const handleExport = useCallback(() => {
     if (sceneObjects.length === 0) return;
-    setExporting(true);
-    setError(null);
-    try {
-      await mergeAndExport(sceneObjects);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to export.");
-    } finally {
-      setExporting(false);
-    }
-  }, [sceneObjects]);
+    setExportDialogOpen(true);
+  }, [sceneObjects.length]);
+
+  const handleConfirmExport = useCallback(
+    async (name: string) => {
+      setExportDialogOpen(false);
+      setExporting(true);
+      setError(null);
+      try {
+        await mergeAndExport(sceneObjects, name);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to export.");
+      } finally {
+        setExporting(false);
+      }
+    },
+    [sceneObjects],
+  );
 
   const updateSelectedTransform = useCallback(
     (transform: import("@/lib/types").ObjectTransform, commit: boolean) => {
@@ -475,6 +490,13 @@ export default function Home() {
           />
         )}
       </div>
+
+      <ExportNameDialog
+        open={exportDialogOpen}
+        defaultName={defaultExportName}
+        onCancel={() => setExportDialogOpen(false)}
+        onConfirm={handleConfirmExport}
+      />
     </main>
   );
 }
